@@ -170,6 +170,43 @@ WHERE status = 'done'
                  ORDER BY finished_at DESC LIMIT 10);
 ```
 
+### 2.4 Data Conventions
+
+**`vocab_detail.verb_forms`** — JSON object; every field is optional:
+
+```json
+{
+  "praesens":    {"ich": "gehe", "du": "gehst", "er": "geht", "wir": "gehen", "ihr": "geht", "sie": "gehen"},
+  "praeteritum": {"ich": "ging", "du": "gingst", "er": "ging", "wir": "gingen", "ihr": "gingt", "sie": "gingen"},
+  "partizip2":   "gegangen",
+  "aux":         "sein",
+  "prefix":      null
+}
+```
+
+- Persons are the keys `ich`, `du`, `er`, `wir`, `ihr`, `sie` (`er` stands for er/sie/es, `sie` for sie/Sie).
+- `aux` is the perfect auxiliary: `haben` or `sein`.
+- Separable verbs: `prefix` holds the prefix (`"auf"`), the person forms hold only the finite part (`stehe`, `stand`), and `partizip2` is the full form (`aufgestanden`). `unit_type` is `separable_verb`.
+
+**`element_link` direction** — read a row as "`from` *kind* `to`":
+
+| `kind` | Meaning |
+|---|---|
+| `prerequisite` | `from` requires `to` to be mastered first (Dativ → Akkusativ) |
+| `part_of` | `from` is part of `to` |
+| `uses` | `from` uses `to` (pattern "Es gibt ..." → Akkusativ) |
+| `related` | Loosely related; no direction implied |
+
+**`mastery` rows** — not created in advance, neither on seed import nor when an element is added. A missing row means level 1 with no `last_seen_at`. The row is created the first time a practice event for that element and dimension is written (M5).
+
+**Seed import** — the seed is a JSON file bundled with the app (`Deutschcoach/Seed/seed_a1.json`; the format is documented in `SeedModels.swift`). It is imported on every launch, in one transaction:
+
+- `element` is upserted by `key` with `INSERT … ON CONFLICT(key) DO UPDATE`, so ids never change. `INSERT OR REPLACE` must not be used: it deletes the row, changes its id, and cascades the delete.
+- For each element in the seed, its detail row, word forms, and outgoing links are replaced.
+- Elements missing from the seed are left untouched, because user data references them. To take an element out of practice, keep it in the seed with `status: "retired"`.
+- Defaults: `status` = `active`, `level_src` = `import`, `reviewed` = 0.
+- `word_form` rows are derived automatically from the lemma, `plural`, and `verb_forms`, plus an optional explicit `forms` list for other forms (dative plural, genitive, adjective endings, comparatives). When the same form occurs several times, its `morph` labels are joined with `,` (e.g. `gehen` → `Inf,Pres.wir,Pres.sie`).
+
 ---
 
 ## 3. Practice Flow
