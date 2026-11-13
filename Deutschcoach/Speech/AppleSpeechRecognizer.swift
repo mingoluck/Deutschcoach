@@ -115,10 +115,17 @@ nonisolated final class AppleSpeechRecognizer: SpeechRecognizer {
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requestedLocale) else {
             throw RecognizerError.localeUnsupported(requestedLocale.identifier)
         }
+        // `fastResults` is required for live feedback: without it, volatile results only arrive
+        // after the audio ends (measured: first text after ~4.8 s for a 4.7 s utterance, versus
+        // ~1.2 s with it and then about once a second). Final transcripts were identical.
+        //
+        // Known engine behavior, with or without `fastResults`: on near-silence with faint room
+        // noise it may output a stray word such as "you". Detecting "no valid speech"
+        // (DESIGN.md §3.4) therefore cannot rely on an empty transcript alone.
         return SpeechTranscriber(
             locale: locale,
             transcriptionOptions: [],
-            reportingOptions: [.volatileResults],
+            reportingOptions: [.volatileResults, .fastResults],
             attributeOptions: [.transcriptionConfidence]
         )
     }

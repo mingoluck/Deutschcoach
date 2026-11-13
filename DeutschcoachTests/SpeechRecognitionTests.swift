@@ -69,18 +69,36 @@ struct AppleSpeechRecognizerTests {
         #expect(volatileUpdates.withLock { $0 } > 0)
     }
 
-    @Test(.timeLimit(.minutes(2)))
-    func silenceYieldsEmptyTranscript() async throws {
+    /// Live feedback must appear while the user is still speaking (needs `fastResults`).
+    /// Audio is fed at real-time pace, like the microphone.
+    @Test(.timeLimit(.minutes(5)))
+    func liveTextArrivesWhileSpeaking() async throws {
         let recognizer = AppleSpeechRecognizer()
-        guard await recognizer.availability() != .unsupported else { return }  // reported by the test above
+        guard await recognizer.availability() != .unsupported else { return }  // reported above
         try await recognizer.prepare { _ in }
 
-        let format = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
-        let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000)!
-        silence.frameLength = 16_000  // one second of zeros
-        let transcript = try await recognizer.transcribe(stream([AudioChunk(buffer: silence)])) { _ in }
-        logger.info("Transcript of silence: \(transcript.text, privacy: .public)")
-        #expect(transcript.isEmpty, "heard: \(transcript.text)")
+        let chunks = await synthesize("Wir wohnen seit drei Jahren in Wien und arbeiten jeden Tag in der Stadt.")
+        let duration = chunks.reduce(0.0) { $0 + Double($1.buffer.frameLength) / $1.buffer.format.sampleRate }
+        let start = ContinuousClock.now
+        let paced = AsyncStream<AudioChunk> { continuation in
+            Task {
+                for chunk in chunks {
+                    continuation.yield(chunk)
+                    try? await Task.sleep(for: .seconds(Double(chunk.buffer.frameLength) / chunk.buffer.format.sampleRate))
+                }
+                continuation.finish()
+            }
+        }
+        let firstLiveText = Mutex<Duration?>(nil)
+        _ = try await recognizer.transcribe(paced) { text in
+            guard !text.isEmpty else { return }
+            firstLiveText.withLock { if $0 == nil { $0 = ContinuousClock.now - start } }
+        }
+
+        let first = try #require(firstLiveText.withLock { $0 })
+        logger.info("First live text after \(first.description, privacy: .public) of \(duration) s audio")
+        // Measured ~1.2 s for ~4.7 s of audio; without fastResults it only came after the audio ended.
+        #expect(first < .seconds(duration * 0.6))
     }
 }
 
