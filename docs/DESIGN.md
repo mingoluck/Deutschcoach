@@ -247,6 +247,8 @@ WHERE status = 'done'
 
 ### 3.4 Scoring
 
+**No recognition bias**: the recognizer is never given the target sentence or target words as hints (e.g. `AnalysisContext.contextualStrings`). Biasing would make it "hear" the correct answer, hiding pronunciation errors in shadowing and turning paraphrases into the reference sentence in cloze and recall.
+
 **Shadowing**: align the recognized text with the target sentence word by word (after text normalization: case, punctuation, ß/ss, numbers). Every word in the sentence that maps to an element in the database (target or incidental vocabulary/pattern elements) gets one `pronunciation` event: `pass` if aligned, `fail` if misread. **Grammar points are not affected by pronunciation errors.**
 
 **Cloze and recall**:
@@ -474,7 +476,7 @@ Interactive visual reference: the label set review page (an artifact made by Cla
 
 ## 6. UI
 
-- **Practice screen**: shows only the German sentence, annotation, and translation (recall mode shows only the translation); a record button; a skip button; after answering, the correct answer is shown and read aloud.
+- **Practice screen**: shows only the German sentence, annotation, and translation (recall mode shows only the translation); a record button; a skip button; while recording, the in-progress (volatile) transcription is shown live as feedback, and only the final transcription is scored; after answering, the correct answer is shown and read aloud.
 - **When the LLM is unavailable**: the practice screen is blocked, showing the reason and a “重试” (Retry) button.
 - **History screen**: the 10 most recent batches, read-only.
 - **Settings screen**: API key (Keychain), native language, voice selection.

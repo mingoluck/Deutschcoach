@@ -6,8 +6,17 @@ struct DeutschcoachApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(model: model)
-                .task { await model.start() }
+            // Temporary milestone screens; replaced by the practice screen later.
+            TabView {
+                Tab("Speech", systemImage: "waveform") {
+                    SpeechLabView()
+                }
+                Tab("Database", systemImage: "cylinder") {
+                    ContentView(model: model)
+                }
+            }
+            .frame(minWidth: 640, minHeight: 480)
+            .task { await model.start() }
         }
     }
 }

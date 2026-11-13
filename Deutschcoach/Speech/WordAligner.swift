@@ -1,0 +1,128 @@
+import Foundation
+
+/// Word-level alignment of a recognized utterance against a target sentence (DESIGN.md §3.4).
+nonisolated struct Alignment: Sendable, Equatable {
+    enum Status: Sendable, Equatable {
+        case match
+        /// The word was read as something else.
+        case substituted(heard: String)
+        /// The word was not heard at all.
+        case missing
+    }
+
+    struct Word: Sendable, Equatable {
+        /// Index into the target token array (the LLM `words` index in later milestones).
+        var index: Int
+        var text: String
+        var status: Status
+    }
+
+    /// One entry per target token that contains a word; punctuation tokens are skipped.
+    var words: [Word]
+    /// Heard words that do not correspond to any target word.
+    var extra: [String]
+
+    var allMatched: Bool { words.allSatisfy { $0.status == .match } }
+    var matchedCount: Int { words.filter { $0.status == .match }.count }
+}
+
+nonisolated enum WordAligner {
+    // MARK: - Normalization
+
+    /// Normalizes a single token: lowercase, ß → ss, punctuation removed, digits spelled out in
+    /// German (`3` → `drei`). Returns an empty string for tokens without letters or digits.
+    static func normalize(_ token: String) -> String {
+        let lowered = token.lowercased(with: german).replacingOccurrences(of: "ß", with: "ss")
+        let kept = String(lowered.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
+        if !kept.isEmpty, kept.allSatisfy(\.isASCIIDigit), let number = Int(kept) {
+            return spellOut(number)
+        }
+        return kept
+    }
+
+    /// Splits free text (a transcription) into normalized words.
+    static func words(in text: String) -> [String] {
+        text.split(whereSeparator: \.isWhitespace).map { normalize(String($0)) }.filter { !$0.isEmpty }
+    }
+
+    // MARK: - Alignment
+
+    /// Aligns `heard` against target tokens. Tokens that normalize to nothing (punctuation) are
+    /// not part of the result.
+    static func align(target tokens: [String], heard: String) -> Alignment {
+        let target: [(index: Int, text: String, key: String)] = tokens.enumerated().compactMap { index, token in
+            let key = normalize(token)
+            return key.isEmpty ? nil : (index, token, key)
+        }
+        // Keep the heard words' original spelling for display.
+        let heardTokens = heard.split(whereSeparator: \.isWhitespace).map(String.init)
+            .map { (text: $0, key: normalize($0)) }
+            .filter { !$0.key.isEmpty }
+
+        let n = target.count, m = heardTokens.count
+        // cost[i][j] = edit distance between target[i...] and heard[j...]
+        var cost = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n, through: 0, by: -1) {
+            for j in stride(from: m, through: 0, by: -1) {
+                if i == n { cost[i][j] = m - j; continue }
+                if j == m { cost[i][j] = n - i; continue }
+                let same = target[i].key == heardTokens[j].key
+                cost[i][j] = min(
+                    cost[i + 1][j + 1] + (same ? 0 : 1),  // match / substitution
+                    cost[i + 1][j] + 1,                    // target word missing
+                    cost[i][j + 1] + 1                     // extra heard word
+                )
+            }
+        }
+
+        var words: [Alignment.Word] = []
+        var extra: [String] = []
+        var i = 0, j = 0
+        while i < n || j < m {
+            if i < n, j < m {
+                let same = target[i].key == heardTokens[j].key
+                if cost[i][j] == cost[i + 1][j + 1] + (same ? 0 : 1) {
+                    let status: Alignment.Status = same ? .match : .substituted(heard: heardTokens[j].text)
+                    words.append(.init(index: target[i].index, text: target[i].text, status: status))
+                    i += 1; j += 1
+                    continue
+                }
+            }
+            if i < n, cost[i][j] == cost[i + 1][j] + 1 {
+                words.append(.init(index: target[i].index, text: target[i].text, status: .missing))
+                i += 1
+            } else {
+                extra.append(heardTokens[j].text)
+                j += 1
+            }
+        }
+        return Alignment(words: words, extra: extra)
+    }
+
+    /// Convenience for a plain sentence: tokens are split on whitespace.
+    static func align(sentence: String, heard: String) -> Alignment {
+        align(target: sentence.split(whereSeparator: \.isWhitespace).map(String.init), heard: heard)
+    }
+
+    // MARK: - Private
+
+    private static let german = Locale(identifier: "de_DE")
+
+    private static func spellOut(_ number: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = german
+        formatter.numberStyle = .spellOut
+        let spelled = formatter.string(from: NSNumber(value: number)) ?? String(number)
+        // Spelled-out numbers may contain soft hyphens or spaces; compare letters only.
+        return normalizeLetters(spelled)
+    }
+
+    private static func normalizeLetters(_ text: String) -> String {
+        let lowered = text.lowercased(with: german).replacingOccurrences(of: "ß", with: "ss")
+        return String(lowered.unicodeScalars.filter { CharacterSet.letters.contains($0) }.map(Character.init))
+    }
+}
+
+private extension Character {
+    nonisolated var isASCIIDigit: Bool { isASCII && isNumber }
+}
