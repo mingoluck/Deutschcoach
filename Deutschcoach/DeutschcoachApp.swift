@@ -8,6 +8,9 @@ struct DeutschcoachApp: App {
         WindowGroup {
             // Temporary milestone screens; replaced by the practice screen later.
             TabView {
+                Tab("Annotation", systemImage: "textformat") {
+                    AnnotationLabView()
+                }
                 Tab("Speech", systemImage: "waveform") {
                     SpeechLabView()
                 }
