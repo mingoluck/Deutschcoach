@@ -24,7 +24,7 @@ A macOS app that coaches you in speaking German:
 | Platform | macOS |
 | UI | SwiftUI (native) |
 | Database | SQLite via GRDB (Swift Package) |
-| LLM | Claude API, using tool use to force output that follows a JSON Schema. Start with a Haiku-class model; decide finally based on measured quality and cost |
+| LLM | Claude API, using tool use with a strict schema (`strict: true`) so tool input always follows the JSON Schema. Start with the Haiku-class model (`claude-haiku-5-5`, effort `medium`); decide finally based on measured quality and cost |
 | Speech synthesis | `AVSpeechSynthesizer` reads aloud live, using the system's enhanced/premium German voices. **No audio files are stored** |
 | Speech recognition | `SpeechAnalyzer` + `SpeechTranscriber` (de-DE, on-device). The recognizer is abstracted behind a protocol so other engines can be plugged in later |
 | Recording | `AVAudioEngine` |
@@ -287,7 +287,7 @@ WHERE status = 'done'
 
 ### 4.1 Generating a Batch of Sentences
 
-Fixed rules, the label set, and the output format go in the system prompt (using prompt caching); each call sends only the request below. Tool calling forces JSON output.
+Fixed rules, the label set, and the output format go in the system prompt (using prompt caching); each call sends only the request below. The answer comes back as a call to the `submit_sentences` tool with `strict: true`. `tool_choice` stays `auto` (forcing a named tool makes the model skip thinking, which annotation quality needs); the system prompt requires the call, and a response without it counts as a failed generation and is retried.
 
 **Request** (built locally; each sentence's targets and mode are already decided):
 
@@ -340,7 +340,7 @@ For polysemous vocabulary, add a `sense` field to the target to disambiguate.
 - Each row of `words`: `[form, lemma, POS, item 4, item 5 (nouns only)]`. The array index is the token index.
   - Item 4: for nouns, pronouns, articles, and adjectives with an inflectional ending, the **case**; for prepositions, the **case they govern**; for verbs and auxiliaries, the **verb form**; otherwise empty `""`.
   - Item 5: only on `NOUN` rows — the **gender**, with `|Plur` appended for plurals.
-- In the JSON Schema, each item of `words` is an array of strings with `minItems: 4, maxItems: 5`.
+- In the JSON Schema, each item of `words` is an array of strings. Strict tool schemas do not support array length constraints, so the 4-or-5-items rule is enforced by local validation (§4.3 rule 2), not by the schema.
 - A word may appear in multiple spans. Spans may be non-contiguous.
 
 ### 4.2 Rules in the Prompt
@@ -348,7 +348,7 @@ For polysemous vocabulary, add a `sense` field to the target to disambiguate.
 1. Every target element must appear in the sentence in a recognizable form, with its token indices given in `targets`.
 2. All other vocabulary is restricted to common words within the user's level.
 3. The 10 sentences of a batch differ in sentence structure, subject, and topic.
-4. The number of words per sentence is limited by level.
+4. The number of words per sentence (punctuation not counted) is limited by level: A1 ≤ 8, A2 ≤ 12, B1 ≤ 16, B2 ≤ 20.
 5. Only the labels from Section 5 may be used; never invent new ones. When unsure, use the broader category (if an adverbial's subtype is unclear, use `AdvM`).
 6. Translations in `recall` mode: literal, uniquely determining the German sentence (express tense with time words, distinguish du/Sie as “你/您” (informal/formal “you”), avoid expressions with several common phrasings), short and simple. Translations for `shadow` and `cloze` may be more natural.
 7. For annotation details, see 5.6.

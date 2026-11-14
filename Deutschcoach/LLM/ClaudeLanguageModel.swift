@@ -1,0 +1,126 @@
+import Foundation
+import os
+
+private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "llm")
+
+/// Sentence generation with the Claude Messages API (DESIGN.md §4.1).
+nonisolated struct ClaudeLanguageModel: LanguageModel {
+    /// DESIGN.md §1: Haiku-class first; revisit after measuring quality and cost.
+    static let defaultModel = "claude-haiku-5-5"
+
+    var model = defaultModel
+    /// Thinking depth. `claude-haiku-5-5` defaults to `medium`; set explicitly.
+    var effort = "medium"
+    /// Includes thinking tokens, which are most of the output. Measured for 10 sentences:
+    /// 12.4K–17.8K output tokens (tool input only ~2–3K), 48–68 s; 16K truncated batches.
+    /// Non-streaming; `ClaudeClient.timeout` leaves room for the slowest case.
+    var maxTokens = 32_000
+    var client: ClaudeClient
+
+    var modelName: String { model }
+
+    func generateSentences(_ request: GenerationRequest) async throws -> GenerationResponse {
+        let body = try requestBody(for: request)
+        let started = ContinuousClock.now
+        let data = try await client.send(body)
+        logger.info("Response after \((ContinuousClock.now - started).description, privacy: .public): \(Self.summary(of: data), privacy: .public)")
+        let response: GenerationResponse
+        do {
+            response = try Self.parse(data)
+        } catch {
+            logger.error("Unusable response: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+        logger.info("""
+            Generated \(response.sentences.count) sentences (\(response.malformed.count) malformed); \
+            tokens in \(response.usage.input) out \(response.usage.output) \
+            cache write \(response.usage.cacheWrite) read \(response.usage.cacheRead)
+            """)
+        return response
+    }
+
+    // MARK: - Request
+
+    func requestBody(for request: GenerationRequest) throws -> Data {
+        let body: [String: Any] = [
+            "model": model,
+            "max_tokens": maxTokens,
+            // Cached prefix: tools + system (render order tools → system → messages).
+            "system": [
+                ["type": "text", "text": GenerationPrompt.system, "cache_control": ["type": "ephemeral"]],
+            ],
+            "tools": [GenerationPrompt.tool],
+            // Not forced: a forced tool call skips thinking (DESIGN.md §4.1). At most one call.
+            "tool_choice": ["type": "auto", "disable_parallel_tool_use": true],
+            "thinking": ["type": "adaptive"],
+            "output_config": ["effort": effort],
+            "messages": [
+                ["role": "user", "content": [["type": "text", "text": try GenerationPrompt.userMessage(for: request)]]],
+            ],
+        ]
+        return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys, .withoutEscapingSlashes])
+    }
+
+    // MARK: - Response
+
+    /// Parses a Messages API response. Content blocks are read by type: thinking blocks come first.
+    static func parse(_ data: Data) throws -> GenerationResponse {
+        guard let message = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw LLMError.malformedResponse("response is not a JSON object")
+        }
+        let stopReason = message["stop_reason"] as? String
+        if stopReason == "refusal" {
+            let details = message["stop_details"] as? [String: Any]
+            throw LLMError.refused(details?["category"] as? String)
+        }
+        let blocks = message["content"] as? [[String: Any]] ?? []
+        let toolCall = blocks.first { $0["type"] as? String == "tool_use" && $0["name"] as? String == GenerationPrompt.toolName }
+        guard let toolCall else {
+            throw stopReason == "max_tokens" ? LLMError.truncated : LLMError.noToolCall
+        }
+        // With max_tokens the tool input may be incomplete.
+        if stopReason == "max_tokens" { throw LLMError.truncated }
+
+        guard
+            let input = toolCall["input"] as? [String: Any],
+            let entries = input["sentences"] as? [Any]
+        else {
+            throw LLMError.malformedResponse("tool input has no sentences array")
+        }
+
+        var sentences: [GeneratedSentence] = []
+        var malformed: [MalformedSentence] = []
+        let decoder = JSONDecoder()
+        for entry in entries {
+            let position = (entry as? [String: Any])?["position"] as? Int
+            do {
+                let json = try JSONSerialization.data(withJSONObject: entry)
+                sentences.append(try decoder.decode(GeneratedSentence.self, from: json))
+            } catch {
+                malformed.append(MalformedSentence(position: position, reason: "could not decode: \(error)"))
+            }
+        }
+        return GenerationResponse(sentences: sentences, malformed: malformed, usage: usage(from: message))
+    }
+
+    /// stop_reason, usage and content block types, for diagnosis (no message text).
+    static func summary(of data: Data) -> String {
+        guard let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "not JSON (\(data.count) bytes)"
+        }
+        let blocks = (message["content"] as? [[String: Any]] ?? []).map { $0["type"] as? String ?? "?" }
+        let usage = usage(from: message)
+        return "stop_reason=\(message["stop_reason"] as? String ?? "nil") blocks=\(blocks) "
+            + "tokens in \(usage.input) out \(usage.output) cache write \(usage.cacheWrite) read \(usage.cacheRead)"
+    }
+
+    private static func usage(from message: [String: Any]) -> TokenUsage {
+        let usage = message["usage"] as? [String: Any] ?? [:]
+        return TokenUsage(
+            input: usage["input_tokens"] as? Int ?? 0,
+            output: usage["output_tokens"] as? Int ?? 0,
+            cacheWrite: usage["cache_creation_input_tokens"] as? Int ?? 0,
+            cacheRead: usage["cache_read_input_tokens"] as? Int ?? 0
+        )
+    }
+}

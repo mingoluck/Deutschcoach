@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import os
 
-private let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "database")
+private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "database")
 
 /// App-wide state. In M1 it opens the database and imports the bundled seed on launch.
 @Observable
@@ -18,7 +18,7 @@ final class AppModel {
     private(set) var summary = ContentSummary()
     private(set) var lastImport: SeedImporter.Report?
 
-    private var database: AppDatabase?
+    private(set) var database: AppDatabase?
 
     func start() async {
         guard database == nil else { return }

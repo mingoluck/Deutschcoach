@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import os
 
-private let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "speech")
+private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "speech")
 
 /// Drives the M2 speech test screen: read aloud → record → transcribe → align.
 /// The practice engine (M5) will reuse the same pieces.
