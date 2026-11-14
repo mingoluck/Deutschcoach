@@ -224,23 +224,3 @@ struct BatchGeneratorTests {
         #expect(try await counts(database) == (0, 0, 0))
     }
 }
-
-struct SimpleTargetPickerTests {
-    @Test func buildsTenSentencesWithGrammarAndVocabulary() async throws {
-        let database = try await makeSeededDatabase()
-        let request = try await database.writer.read { db in try SimpleTargetPicker(nativeLang: "zh").makeRequest(from: db) }
-        #expect(request.sentences.map(\.position) == Array(1...10))
-        #expect(request.nativeLang == "zh" && request.userLevel == .a1)
-        for sentence in request.sentences {
-            let kinds = sentence.targets.map(\.kind)
-            #expect(kinds.filter { $0 == .grammar }.count == 1)
-            #expect((1...3).contains(kinds.filter { $0 == .vocab }.count))
-            #expect(kinds.filter { $0 == .pattern }.count <= 1)
-            #expect(Set(sentence.targets.map(\.elementId)).count == sentence.targets.count)
-            #expect(sentence.mode == .shadow)
-        }
-        // 13 grammar points in the seed: no repeats within ten sentences.
-        let grammar = request.sentences.flatMap(\.targets).filter { $0.kind == .grammar }.map(\.elementId)
-        #expect(Set(grammar).count == 10)
-    }
-}

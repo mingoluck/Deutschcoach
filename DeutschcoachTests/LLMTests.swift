@@ -150,7 +150,7 @@ struct ResponseParsingTests {
 
     @Test func answerWithoutToolCall() throws {
         let data = try response(content: [["type": "text", "text": "Here you go"]], stopReason: "end_turn")
-        #expect(throws: LLMError.noToolCall) { try ClaudeLanguageModel.parse(data) }
+        #expect(throws: LLMError.noToolCall(GenerationPrompt.toolName)) { try ClaudeLanguageModel.parse(data) }
     }
 }
 

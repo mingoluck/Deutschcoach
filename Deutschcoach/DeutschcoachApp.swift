@@ -6,8 +6,11 @@ struct DeutschcoachApp: App {
 
     var body: some Scene {
         WindowGroup {
-            // Temporary milestone screens; replaced by the practice screen later.
+            // The lab tabs are temporary milestone screens.
             TabView {
+                Tab("Practice", systemImage: "mic.fill") {
+                    PracticeView(model: model)
+                }
                 Tab("Generation", systemImage: "sparkles") {
                     GenerationLabView(model: model)
                 }

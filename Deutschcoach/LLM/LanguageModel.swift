@@ -1,13 +1,52 @@
 import Foundation
 
 // The LLM abstraction (AGENTS.md: LLM calls behind a protocol) and the data exchanged for
-// sentence generation (DESIGN.md §4.1). The judge (M5) and translation (M6) are added later.
+// sentence generation (DESIGN.md §4.1) and answer judging (§3.4). Translation comes in M6.
 
 nonisolated protocol LanguageModel: Sendable {
     /// Recorded in `batch.model` and `sentence.model`.
     var modelName: String { get }
 
     func generateSentences(_ request: GenerationRequest) async throws -> GenerationResponse
+
+    /// Judges a cloze or recall answer that local comparison could not accept (§3.4).
+    func judge(_ request: JudgeRequest) async throws -> JudgeVerdict
+}
+
+// MARK: - Judge (§3.4)
+
+nonisolated struct JudgeRequest: Codable, Sendable, Equatable {
+    struct Target: Codable, Sendable, Equatable {
+        var elementId: Int64
+        var title: String
+
+        enum CodingKeys: String, CodingKey {
+            case elementId = "element_id"
+            case title
+        }
+    }
+
+    var mode: SentenceMode
+    var translation: String
+    var reference: String
+    var targets: [Target]
+    /// The recognized text.
+    var answer: String
+}
+
+nonisolated struct JudgeVerdict: Codable, Sendable, Equatable {
+    enum Confidence: String, Codable, Sendable {
+        case high, low
+    }
+
+    var valid: Bool
+    var confidence: Confidence
+    var targetsUsed: [Int64]
+
+    enum CodingKeys: String, CodingKey {
+        case valid, confidence
+        case targetsUsed = "targets_used"
+    }
 }
 
 // MARK: - Request (§4.1)
@@ -110,8 +149,8 @@ nonisolated enum LLMError: Error, Equatable, LocalizedError {
     case refused(String?)
     /// `stop_reason: "max_tokens"`: the output was cut off.
     case truncated
-    /// The model answered without calling the tool.
-    case noToolCall
+    /// The model answered without calling the expected tool (named).
+    case noToolCall(String)
     case malformedResponse(String)
 
     var errorDescription: String? {
@@ -127,7 +166,7 @@ nonisolated enum LLMError: Error, Equatable, LocalizedError {
         case .network(let message): "Network error: \(message)"
         case .refused(let category): "The model declined the request\(category.map { " (\($0))" } ?? "")."
         case .truncated: "The model's output was cut off (max_tokens)."
-        case .noToolCall: "The model answered without calling submit_sentences."
+        case .noToolCall(let tool): "The model answered without calling \(tool)."
         case .malformedResponse(let message): "Unexpected API response: \(message)"
         }
     }

@@ -233,6 +233,14 @@ WHERE status = 'done'
 | Pronunciation ≥ 3 and recall mastery < 3 | Cloze `cloze` |
 | Recall mastery ≥ 3 | Recall `recall` |
 
+Details (settled for M5):
+
+- **Primary target** = the sentence's first-picked vocabulary item (the one with the highest weight). Grammar points cannot be primary: they never receive `pronunciation` events, so they would keep every sentence in `shadow` and never get `recall` events.
+- **Prerequisites**: a prerequisite counts as met when its mastery is ≥ 2, taking the higher of its two dimensions (grammar points: `recall` only).
+- **Weight** = `(6 − mastery)² × (1 + min(days since last practice, 14) / 7) × jitter(0.8–1.2)`. Vocabulary uses the lower of its two dimensions; grammar points use `recall`. Never-practiced elements count as 14 days.
+- **Running out of candidates**: first relax the prerequisite filter, then allow repeats within the batch.
+- The user level is fixed at A1 until the settings screen offers a choice.
+
 ### 3.3 The Three Modes
 
 | Mode | Shown | What the user does | Mastery dimension affected |
@@ -241,7 +249,7 @@ WHERE status = 'done'
 | Cloze | Sentence with blanks + full translation, not read aloud. Blanks keep their case color and constituent lines; the other words' annotations are shown as usual before answering | Says the full sentence | `recall` |
 | Recall | Translation only | Says the full sentence | `recall` |
 
-- Cloze blanks are chosen locally: 1–3 tokens picked from the target elements' token indices, stored in `sentence.blanks`.
+- Cloze blanks are chosen locally: 1–3 tokens picked from the target elements' token indices (at most one per target element, punctuation excluded), stored in `sentence.blanks` when the batch is stored.
 - Recording ends when the user taps a button.
 - After answering, the correct full sentence (with annotation) is shown and read aloud.
 
@@ -259,7 +267,8 @@ WHERE status = 'done'
 ③ Everything else → call the LLM judge (await synchronously, in parallel with showing the answer and reading it aloud)
 ```
 
-- Local judging: lenient for vocabulary — any inflected form of the lemma in the recognized text counts as correct (via `word_form`); strict for grammar points and patterns — the specific form is required.
+- Local judging: lenient for vocabulary — any inflected form of the lemma in the recognized text counts as correct (via `word_form`; a separable verb also needs its prefix); strict for grammar points and patterns — the specific form is required: aligning the recognized text with the sentence (as in shadowing), all of the element's tokens must match.
+- One event per element per sentence. In shadowing, an element fails if any of its tokens is misread.
 - Judge input: translation, original German sentence, target elements (id + German title), recognized text.
 - Judge output: `{"valid": true, "confidence": "high", "targets_used": [101]}`
 
@@ -271,6 +280,7 @@ WHERE status = 'done'
 
 - On a paraphrase, the user does **not** get extra credit for other elements they happened to use correctly.
 - Incomplete attempts (quitting midway, judge failure) are discarded: no events are written, the sentence stays `pending`, and it continues next time.
+- A judge failure means the LLM is unavailable (§1): the practice screen is blocked; “重试” (Retry) re-sends the judge request with the same recognized text, kept in memory, so the user does not have to answer again.
 - Events, `mastery` updates, and `sentence.status` are written in a single transaction.
 
 ### 3.5 Mastery Rules (initial values, adjustable)
@@ -279,6 +289,7 @@ WHERE status = 'done'
 - 3 consecutive `pass`: up one level (maximum 5).
 - `not_attempted`: does not change mastery and does not break the consecutive count.
 - The rules live in code; after adjusting them, all mastery can be recomputed from `practice_event`.
+- There is no streak column: each time events are written, the level of each affected (element, dimension) is recomputed by replaying all its events through the rules. Every event written updates `last_seen_at`.
 - Anti-avoidance rules (repeatedly paraphrasing around target elements) are not implemented for now; they can be added later based directly on event statistics.
 
 ---

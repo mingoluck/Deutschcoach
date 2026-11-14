@@ -30,7 +30,7 @@ struct LiveGenerationTests {
         let key = try #require(try KeychainStore.apiKey.read(), "No API key in the Keychain")
         let database = try await makeSeededDatabase()
         let request = try await database.writer.read { db in
-            try SimpleTargetPicker(count: variant.sentences, nativeLang: "zh").makeRequest(from: db)
+            try ElementPicker(count: variant.sentences, nativeLang: "zh").makeRequest(from: db)
         }
         var model = ClaudeLanguageModel(client: ClaudeClient(apiKey: { key }, timeout: 300))
         model.effort = variant.effort

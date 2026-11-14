@@ -77,13 +77,25 @@ struct TemplateIds {
 final class FakeLanguageModel: LanguageModel, @unchecked Sendable {
     let modelName = "fake-model"
     private let respond: @Sendable (GenerationRequest, Int) throws -> GenerationResponse
+    private let verdict: @Sendable (JudgeRequest) throws -> JudgeVerdict
     private let calls = Mutex<[GenerationRequest]>([])
+    private let judgeCalls = Mutex<[JudgeRequest]>([])
 
-    init(_ respond: @escaping @Sendable (GenerationRequest, Int) throws -> GenerationResponse) {
+    init(
+        judge: @escaping @Sendable (JudgeRequest) throws -> JudgeVerdict = { _ in JudgeVerdict(valid: true, confidence: .high, targetsUsed: []) },
+        _ respond: @escaping @Sendable (GenerationRequest, Int) throws -> GenerationResponse
+    ) {
         self.respond = respond
+        self.verdict = judge
     }
 
     var requests: [GenerationRequest] { calls.withLock { $0 } }
+    var judgeRequests: [JudgeRequest] { judgeCalls.withLock { $0 } }
+
+    func judge(_ request: JudgeRequest) async throws -> JudgeVerdict {
+        judgeCalls.withLock { $0.append(request) }
+        return try verdict(request)
+    }
 
     func generateSentences(_ request: GenerationRequest) async throws -> GenerationResponse {
         let number = calls.withLock { calls in

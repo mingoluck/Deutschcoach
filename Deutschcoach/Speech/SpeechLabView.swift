@@ -91,7 +91,7 @@ struct SpeechLabView: View {
 
             if let alignment = lab.alignment {
                 LabeledContent("Alignment") {
-                    Text(Self.render(alignment))
+                    Text(alignment.attributedText)
                 }
                 if !alignment.extra.isEmpty {
                     LabeledContent("Extra words") {
@@ -105,29 +105,5 @@ struct SpeechLabView: View {
             }
         }
         .font(.title3)
-    }
-
-    /// Matched words plain, misread words red with what was heard, missing words struck through.
-    private static func render(_ alignment: Alignment) -> AttributedString {
-        var result = AttributedString()
-        for (offset, word) in alignment.words.enumerated() {
-            if offset > 0 { result += AttributedString(" ") }
-            var piece = AttributedString(word.text)
-            switch word.status {
-            case .match:
-                break
-            case .substituted(let heard):
-                piece.foregroundColor = .red
-                piece.underlineStyle = .single
-                var heardPiece = AttributedString(" (\(heard))")
-                heardPiece.foregroundColor = .secondary
-                piece += heardPiece
-            case .missing:
-                piece.foregroundColor = .red
-                piece.strikethroughStyle = .single
-            }
-            result += piece
-        }
-        return result
     }
 }

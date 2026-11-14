@@ -137,7 +137,12 @@ nonisolated struct BatchGenerator: Sendable {
                 String(decoding: try encoder.encode(value), as: UTF8.self)
             }
 
+            var rng = SystemRandomNumberGenerator()
             for validated in sentences {
+                // §3.3: cloze blanks are chosen when the sentence is stored.
+                let blanks = validated.request.mode == .cloze
+                    ? ClozeBlanks.choose(targets: validated.targets, words: validated.annotation.words, using: &rng)
+                    : nil
                 var sentence = Sentence(
                     batchId: batchId,
                     position: validated.request.position,
@@ -146,7 +151,7 @@ nonisolated struct BatchGenerator: Sendable {
                     de: validated.de,
                     translations: try json([nativeLang: validated.translation]),
                     annotation: try json(validated.annotation),
-                    blanks: nil,  // cloze blanks are chosen in M5
+                    blanks: try blanks.map { try json($0) },
                     model: modelName,
                     createdAt: createdAt,
                     flagged: false

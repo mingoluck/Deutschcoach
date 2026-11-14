@@ -69,7 +69,7 @@ final class GenerationLab {
         let model = ClaudeLanguageModel(client: ClaudeClient(apiKey: { try keychain.read() }))
         let generator = BatchGenerator(database: database, model: model)
         do {
-            let request = try await database.writer.read { db in try SimpleTargetPicker().makeRequest(from: db) }
+            let request = try await database.writer.read { db in try ElementPicker().makeRequest(from: db) }
             append("Requesting \(request.sentences.count) sentences from \(model.modelName)…")
             let report = try await generator.generate(request) { [weak self] event in
                 Task { @MainActor in self?.append(Self.describe(event)) }

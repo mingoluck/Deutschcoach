@@ -1,8 +1,7 @@
 import Foundation
 import GRDB
 
-// User-layer records for batches and sentences (DESIGN.md §2.2). Mastery and practice events
-// are added in M5. JSON columns are kept as JSON text.
+// User-layer records (DESIGN.md §2.2). JSON columns are kept as JSON text.
 
 nonisolated enum BatchStatus: String, Codable, Sendable {
     case generating, ready, active, done
@@ -87,4 +86,65 @@ nonisolated struct SentenceElement: Codable, Sendable, Equatable, FetchableRecor
     var role: SentenceElementRole
     /// JSON array of token indices.
     var tokens: String?
+}
+
+nonisolated enum MasteryDimension: String, Codable, Sendable, CaseIterable {
+    case pronunciation, recall
+}
+
+nonisolated enum PracticeOutcome: String, Codable, Sendable {
+    case pass, fail
+    case notAttempted = "not_attempted"
+}
+
+/// A missing row means level 1, never seen (DESIGN.md §2.4).
+nonisolated struct Mastery: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "mastery"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+
+    var elementId: Int64
+    var dimension: MasteryDimension
+    var level: Int
+    /// Unix time in seconds.
+    var lastSeenAt: Int64?
+}
+
+/// Append-only (DESIGN.md §2.2). `sentence_id` has no foreign key so events survive pruning.
+nonisolated struct PracticeEvent: Codable, Sendable, Equatable, FetchableRecord, MutablePersistableRecord {
+    static let databaseTableName = "practice_event"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+
+    var id: Int64?
+    /// Unix time in seconds.
+    var ts: Int64
+    var sentenceId: Int64?
+    var elementId: Int64
+    var dimension: MasteryDimension
+    var mode: SentenceMode
+    var outcome: PracticeOutcome
+    /// JSON-encoded `PracticeEventDetail`.
+    var detail: String?
+
+    mutating func didInsert(_ inserted: InsertionSuccess) {
+        id = inserted.rowID
+    }
+}
+
+/// Why an element was not attempted (DESIGN.md §2.2 `practice_event.detail`).
+nonisolated enum NotAttemptedReason: String, Codable, Sendable {
+    case skipped
+    case noSpeech = "no_speech"
+    case paraphrase
+    case unclear
+}
+
+/// The `detail` column of `practice_event`.
+nonisolated struct PracticeEventDetail: Codable, Sendable, Equatable {
+    /// The final recognized text.
+    var heard: String?
+    var engine: String?
+    var reason: NotAttemptedReason?
+    var judge: JudgeVerdict?
 }
