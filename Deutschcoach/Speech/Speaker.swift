@@ -8,18 +8,45 @@ final class Speaker: NSObject {
     /// The utterance `continuation` waits for; late callbacks of interrupted utterances are ignored.
     private var current: ObjectIdentifier?
 
-    /// The best installed German voice. Voice selection by the user comes with the settings screen (M6).
-    let voice: AVSpeechSynthesisVoice?
+    /// The voice chosen in Settings, or the best installed German voice.
+    var voice: AVSpeechSynthesisVoice? {
+        if let id = Self.selectedVoiceIdentifier, let chosen = AVSpeechSynthesisVoice(identifier: id) {
+            return chosen
+        }
+        return Self.bestGermanVoice()
+    }
 
     override init() {
-        voice = Self.bestGermanVoice()
         super.init()
         synthesizer.delegate = self
     }
 
+    // MARK: - Voice setting
+
+    static let voiceDefaultsKey = "voiceIdentifier"
+
+    /// `nil` means automatic (the best installed voice).
+    static var selectedVoiceIdentifier: String? {
+        get { UserDefaults.standard.string(forKey: voiceDefaultsKey) }
+        set { UserDefaults.standard.set(newValue, forKey: voiceDefaultsKey) }
+    }
+
+    /// Installed German voices, best quality first.
+    static func germanVoices() -> [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language == "de-DE" }
+            .sorted { a, b in
+                a.quality != b.quality ? a.quality.rawValue > b.quality.rawValue : a.name < b.name
+            }
+    }
+
+    static func describe(_ voice: AVSpeechSynthesisVoice) -> String {
+        "\(voice.name) (\(qualityName(voice.quality)))"
+    }
+
     var voiceDescription: String {
         guard let voice else { return "No German voice installed" }
-        return "\(voice.name) (\(Self.qualityName(voice.quality)))"
+        return Self.describe(voice)
     }
 
     var hasHighQualityVoice: Bool {

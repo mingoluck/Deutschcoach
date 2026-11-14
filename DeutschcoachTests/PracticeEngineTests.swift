@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 @testable import Deutschcoach
 
@@ -11,6 +12,12 @@ final class SilentRecognizer: SpeechRecognizer {
     func transcribe(_ audio: AsyncStream<AudioChunk>, onVolatile: @escaping @Sendable (String) -> Void) async throws -> Transcript {
         Transcript(text: "", words: [], engine: engineName)
     }
+}
+
+/// A network monitor tests switch by hand; the engine is told through `networkChanged`.
+final class FakeNetwork: NetworkMonitor {
+    var isOnline = true
+    func start(_ handler: @escaping @MainActor (Bool) -> Void) {}
 }
 
 final class SilentSpeaker: SentenceSpeaker {
@@ -53,8 +60,8 @@ func generatedResponse(for request: GenerationRequest, database: AppDatabase) th
 
 @MainActor
 struct PracticeEngineTests {
-    private func makeEngine(_ database: AppDatabase, model: FakeLanguageModel, speaker: SilentSpeaker = SilentSpeaker()) -> PracticeEngine {
-        PracticeEngine(database: database, model: model, recognizer: SilentRecognizer(), speaker: speaker, nativeLang: "zh")
+    private func makeEngine(_ database: AppDatabase, model: FakeLanguageModel, speaker: SilentSpeaker = SilentSpeaker(), network: FakeNetwork = FakeNetwork()) -> PracticeEngine {
+        PracticeEngine(database: database, model: model, recognizer: SilentRecognizer(), speaker: speaker, network: network, nativeLang: "zh")
     }
 
     private func batchStatuses(_ database: AppDatabase) async throws -> [BatchStatus] {
@@ -177,6 +184,186 @@ struct PracticeEngineTests {
         await engine.waitForGeneration()
         #expect(engine.status == .practicing)
     }
+
+    // MARK: - M6: network, API key, language
+
+    private func batches(_ database: AppDatabase) async throws -> [(BatchStatus, String)] {
+        try await database.writer.read { db in try Batch.order(Column("id")).fetchAll(db).map { ($0.status, $0.nativeLang) } }
+    }
+
+    @Test func offlineAtLaunchBlocksUntilTheNetworkReturns() async throws {
+        let database = try await makeSeededDatabase()
+        let model = makeGeneratingModel(database)
+        let network = FakeNetwork()
+        network.isOnline = false
+        let engine = makeEngine(database, model: model, network: network)
+
+        await engine.start()
+        #expect(engine.status == .unavailable(LLMError.offline.localizedDescription))
+        #expect(model.requests.isEmpty)  // nothing is sent while offline
+
+        await engine.retryAfterFailure()  // Retry while still offline: stays blocked
+        #expect(engine.isBlocked && model.requests.isEmpty)
+
+        network.isOnline = true
+        await engine.networkChanged(online: true)
+        await engine.waitForGeneration()
+        #expect(engine.status == .practicing)
+    }
+
+    @Test func losingTheNetworkBlocksAtOnceAndReturningResumes() async throws {
+        let database = try await makeSeededDatabase()
+        let model = makeGeneratingModel(database)
+        let network = FakeNetwork()
+        let engine = makeEngine(database, model: model, network: network)
+        await engine.start()
+        await engine.waitForGeneration()
+        await engine.waitForGeneration()
+        let item = try #require(engine.item)
+        #expect(model.requests.count == 2)
+
+        network.isOnline = false
+        await engine.networkChanged(online: false)
+        #expect(engine.isBlocked)
+
+        network.isOnline = true
+        await engine.networkChanged(online: true)
+        #expect(engine.status == .practicing && engine.item == item && engine.step == .prompt)
+        #expect(model.requests.count == 2)  // a ready batch exists: nothing to regenerate
+    }
+
+    @Test func failedGenerationWhileOfflineIsRetriedWhenOnline() async throws {
+        let database = try await makeSeededDatabase()
+        let failing = FailSwitch()
+        failing.isOn = true
+        let model = FakeLanguageModel { request, _ in
+            if failing.isOn { throw LLMError.network("The Internet connection appears to be offline.") }
+            return try generatedResponse(for: request, database: database)
+        }
+        let network = FakeNetwork()
+        let engine = makeEngine(database, model: model, network: network)
+        await engine.start()
+        await engine.waitForGeneration()
+        #expect(engine.isBlocked)
+
+        // The monitor notices the outage after the call failed; the pending generation is kept.
+        network.isOnline = false
+        await engine.networkChanged(online: false)
+        failing.isOn = false
+        network.isOnline = true
+        await engine.networkChanged(online: true)
+        await engine.waitForGeneration()
+        #expect(engine.status == .practicing)
+    }
+
+    @Test func savingAKeyRetriesOnce() async throws {
+        let database = try await makeSeededDatabase()
+        let failing = FailSwitch()
+        failing.isOn = true
+        let model = FakeLanguageModel { request, _ in
+            if failing.isOn { throw LLMError.invalidAPIKey }
+            return try generatedResponse(for: request, database: database)
+        }
+        let engine = makeEngine(database, model: model)
+        await engine.start()
+        await engine.waitForGeneration()
+        #expect(engine.status == .unavailable(LLMError.invalidAPIKey.localizedDescription))
+
+        failing.isOn = false
+        await engine.apiKeyChanged()
+        await engine.waitForGeneration()
+        #expect(engine.status == .practicing)
+    }
+
+    @Test func aRejectedOrDeletedKeyBlocksAtOnceAndAGoodKeyResumes() async throws {
+        let database = try await makeSeededDatabase()
+        let model = makeGeneratingModel(database)
+        let engine = makeEngine(database, model: model)
+        await engine.start()
+        await engine.waitForGeneration()
+        await engine.waitForGeneration()  // a ready batch exists: no LLM call is pending
+        let item = try #require(engine.item)
+        let calls = model.requests.count
+
+        model.accessError.withLock { $0 = .invalidAPIKey }  // a wrong key was saved
+        await engine.apiKeyChanged()
+        #expect(engine.status == .unavailable(LLMError.invalidAPIKey.localizedDescription))
+
+        model.accessError.withLock { $0 = .missingAPIKey }  // then deleted
+        await engine.apiKeyChanged()
+        #expect(engine.status == .unavailable(LLMError.missingAPIKey.localizedDescription))
+
+        await engine.retryAfterFailure()  // Retry re-checks the key
+        #expect(engine.isBlocked)
+
+        model.accessError.withLock { $0 = nil }  // a good key
+        await engine.apiKeyChanged()
+        #expect(engine.status == .practicing && engine.item == item)
+        #expect(model.requests.count == calls)  // checking the key never calls the model
+    }
+
+    @Test func aRejectedKeyAtLaunchBlocks() async throws {
+        let database = try await makeSeededDatabase()
+        let ids = try await TemplateIds(database)
+        try await storeTemplateBatch(database, ids: ids, modes: [.shadow])
+        try await storeTemplateBatch(database, ids: ids, modes: [.shadow])  // active + ready: no generation
+        let model = makeGeneratingModel(database)
+        model.accessError.withLock { $0 = .invalidAPIKey }
+        let engine = makeEngine(database, model: model)
+        await engine.start()
+        #expect(engine.status == .unavailable(LLMError.invalidAPIKey.localizedDescription))
+        #expect(model.requests.isEmpty)
+    }
+
+    @Test func changingTheLanguageDiscardsCurrentBatchesAndRegenerates() async throws {
+        let database = try await makeSeededDatabase()
+        let model = makeGeneratingModel(database)
+        let engine = makeEngine(database, model: model)
+        await engine.start()
+        await engine.waitForGeneration()
+        await engine.waitForGeneration()
+        let item = try #require(engine.item)
+        await engine.submit(heard: item.sentence.de, skipped: false)
+        let events = try await database.writer.read { db in try PracticeEvent.fetchCount(db) }
+        #expect(try await batches(database).map(\.0) == [.active, .ready])
+
+        await engine.changeLanguage(to: "en")
+        #expect(engine.status == .waitingForBatch && engine.item == nil)
+        await engine.waitForGeneration()
+        await engine.waitForGeneration()
+        #expect(engine.status == .practicing && engine.nativeLang == "en")
+        let current = try await batches(database)
+        #expect(current.map(\.0) == [.active, .ready])
+        #expect(current.allSatisfy { $0.1 == "en" })
+        #expect(model.requests.suffix(2).allSatisfy { $0.nativeLang == "en" })
+        #expect(try await database.writer.read { db in try PracticeEvent.fetchCount(db) } == events)  // events kept
+    }
+
+    @Test func aGenerationStartedBeforeALanguageChangeIsDiscarded() async throws {
+        let database = try await makeSeededDatabase()
+        let gate = Gate()
+        let model = FakeLanguageModel { request, call in
+            if call == 1 { gate.wait() }  // the first (zh) generation finishes late
+            return try generatedResponse(for: request, database: database)
+        }
+        let engine = makeEngine(database, model: model)
+        await engine.start()
+        await engine.changeLanguage(to: "en")
+        gate.open()
+        await engine.waitForGeneration()
+        await engine.waitForGeneration()
+        try await Task.sleep(for: .milliseconds(200))  // let the stale generation clean up
+        let current = try await batches(database)
+        #expect(current.allSatisfy { $0.1 == "en" })
+        #expect(engine.status == .practicing && engine.nativeLang == "en")
+    }
+}
+
+/// Blocks a fake model call until opened.
+final class Gate: @unchecked Sendable {
+    private let semaphore = DispatchSemaphore(value: 0)
+    func wait() { semaphore.wait() }
+    func open() { semaphore.signal() }
 }
 
 final class FailSwitch: @unchecked Sendable {

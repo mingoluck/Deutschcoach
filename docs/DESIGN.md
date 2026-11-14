@@ -2,7 +2,7 @@
 
 This document collects all design decisions settled in the discussions of November 2026 and is the single source of truth for development. Before changing any decision, confirm with the project owner first; once confirmed, update this document accordingly.
 
-> Note on UI labels: the native language is currently Chinese (`zh`). Where this document shows display names for the UI (labels in Section 5, button texts), the Chinese label is given as the actual UI string, with an English gloss in parentheses.
+> Note on UI labels: the whole UI follows the native language (§2.1). Where this document shows display names for the UI (labels in Section 5, button texts), the Chinese label is given as the actual UI string, with an English gloss in parentheses; in code, UI strings are English keys of a string catalog with Chinese translations.
 
 ---
 
@@ -32,6 +32,10 @@ A macOS app that coaches you in speaking German:
 
 **Strict dependency on the LLM**: when the LLM is unavailable (no network, invalid key, insufficient quota, service overloaded), the whole practice screen is blocked with the reason shown, and no practice is possible — even if a cached batch of sentences exists. Rate-limit and server errors are first retried automatically twice (with increasing intervals), and retried again automatically when the network comes back.
 
+- The network is monitored (`NWPathMonitor`): losing it blocks practice immediately, without waiting for an LLM call to fail. When it comes back, the failed operation (generation or judge) is retried automatically and the block lifts on success.
+- Other errors (invalid key, no credit, overloaded after the client retries) wait for the Retry button.
+- The API key is checked with the free `GET /v1/models` at launch and whenever it is saved or deleted in Settings, so a missing or rejected key blocks at once rather than at the next LLM call; an accepted key lifts the block. (This cannot detect missing credit; only a Messages call shows that.)
+
 ---
 
 ## 2. Database
@@ -41,7 +45,7 @@ A macOS app that coaches you in speaking German:
 - The **content layer** (elements, links, word forms) can be re-imported from seed data by `key` (update if it exists, insert otherwise) without affecting user data.
 - The **user layer** (mastery, practice events, sentences) is never overwritten by a content import.
 - Element content is German only. **No explanations, definitions, or translations of elements are stored** (there is no `element_text` table).
-- The native language is replaceable: it only affects sentence translations and the localization of UI labels. The current native language is stored in UserDefaults.
+- The native language is replaceable: it affects sentence translations and the language of the whole UI (annotation labels and all interface text; the app sets the SwiftUI `locale` from it, so it switches at once). Only system-provided text (menu bar, window titles) and raw error messages stay in the system language or English. The current native language is stored in UserDefaults. Supported for now: Chinese (`zh`) and English (`en`).
 
 ### 2.2 Schema
 
@@ -217,7 +221,7 @@ WHERE status = 'done'
 - **As soon as a batch becomes `active`, generation of the next batch starts immediately.** This call also serves as the probe for whether the LLM is available.
 - On app launch: delete any leftover `generating` batch; if there is an `active` batch, resume from its first `pending` sentence; otherwise promote the `ready` batch to `active`; if there is neither, generate one on the spot.
 - Generation failure: delete that batch and treat it as LLM unavailable.
-- On changing the native language: discard the `ready` batch and regenerate; when historical sentences lack a translation in the new language, have the LLM translate them on demand and write the result back to `translations`.
+- On changing the native language: discard the `active` and `ready` batches (and any batch being generated) and generate a new one on the spot; events already written are kept. Switching languages in the middle of a batch is not supported beyond that. When historical sentences lack a translation in the new language, the LLM translates the whole batch on demand when it is first viewed (strict tool `submit_translations`, effort `low`, thinking off) and the result is written back to `translations`.
 - History is read-only and cannot be practiced again.
 
 ### 3.2 Element Selection and Mode Assignment (done locally)
@@ -488,9 +492,10 @@ Interactive visual reference: the label set review page (an artifact made by Cla
 ## 6. UI
 
 - **Practice screen**: shows only the German sentence, annotation, and translation (recall mode shows only the translation); a record button; a skip button; while recording, the in-progress (volatile) transcription is shown live as feedback, and only the final transcription is scored; after answering, the correct answer is shown and read aloud.
-- **When the LLM is unavailable**: the practice screen is blocked, showing the reason and a “重试” (Retry) button.
-- **History screen**: the 10 most recent batches, read-only.
-- **Settings screen**: API key (Keychain), native language, voice selection.
+- **When the LLM is unavailable**: the practice screen is blocked, showing the reason (the raw English error message) and a “重试” (Retry) button.
+- **History screen**: the 10 most recent batches, read-only. Each sentence shows its annotation, translation, mode and result (passed, mistakes, skipped), summarized from `practice_event`.
+- **Settings screen**: the standard macOS Settings window (⌘,) with the API key (Keychain; only whether one is stored is shown), native language, and voice selection (installed German voices, stored in UserDefaults, with a preview).
+- The main window has two tabs: practice and history. Of the milestone lab screens, only speech and database remain, in Debug builds only.
 
 ---
 

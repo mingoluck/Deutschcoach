@@ -9,6 +9,8 @@ private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", cate
 /// `retry-after` (DESIGN.md §1). Everything else is mapped to `LLMError` and thrown.
 nonisolated struct ClaudeClient: Sendable {
     static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
+    /// Listing models is free; used to check the key (DESIGN.md §1).
+    static let modelsEndpoint = URL(string: "https://api.anthropic.com/v1/models?limit=1")!
     static let apiVersion = "2026-10-21"
 
     /// Reads the API key at call time, so a key saved later is picked up.
@@ -23,12 +25,24 @@ nonisolated struct ClaudeClient: Sendable {
 
     /// Sends a Messages API request body and returns the response body of a 200.
     func send(_ body: Data) async throws -> Data {
-        guard let key = try apiKey(), !key.isEmpty else { throw LLMError.missingAPIKey }
-
         var request = URLRequest(url: Self.endpoint, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "content-type")
+        return try await perform(request)
+    }
+
+    /// Checks that the stored key is accepted (`GET /v1/models`, free). It cannot tell whether
+    /// the account has credit; only a Messages call shows that.
+    func verifyKey() async throws {
+        var request = URLRequest(url: Self.modelsEndpoint, timeoutInterval: 30)
+        request.httpMethod = "GET"
+        _ = try await perform(request)
+    }
+
+    private func perform(_ request: URLRequest) async throws -> Data {
+        guard let key = try apiKey(), !key.isEmpty else { throw LLMError.missingAPIKey }
+        var request = request
         request.setValue(key, forHTTPHeaderField: "x-api-key")
         request.setValue(Self.apiVersion, forHTTPHeaderField: "anthropic-version")
 

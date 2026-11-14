@@ -30,7 +30,7 @@ private struct PracticeContent: View {
             case .starting:
                 centered { ProgressView() }
             case .waitingForBatch:
-                centered { ProgressView("正在生成句子…") }  // Generating sentences…
+                centered { ProgressView("Generating sentences…") }
             case .unavailable(let message):
                 blocked(message)
             case .failed(let message):
@@ -54,7 +54,7 @@ private struct PracticeContent: View {
     private var header: some View {
         HStack(spacing: 12) {
             if engine.status == .practicing, let item = engine.item {
-                Text(Self.modeName(item.mode))
+                Text(item.mode.displayName)
                     .font(.headline)
                 Text("\(min(engine.progress.answered + 1, engine.progress.total)) / \(engine.progress.total)")
                     .monospacedDigit()
@@ -63,13 +63,13 @@ private struct PracticeContent: View {
             Spacer()
             if engine.isGeneratingNext && engine.status == .practicing {
                 ProgressView().controlSize(.small)
-                Text("正在准备下一组").font(.caption).foregroundStyle(.secondary)  // Preparing the next batch
+                Text("Preparing the next batch").font(.caption).foregroundStyle(.secondary)
             }
             switch engine.speechState {
             case .checking:
                 EmptyView()
             case .downloading(let fraction):
-                ProgressView("语音模型下载中", value: fraction).frame(width: 160)  // Downloading speech model
+                ProgressView("Downloading the speech model", value: fraction).frame(width: 160)
             case .ready:
                 EmptyView()
             case .unavailable(let message):
@@ -78,13 +78,6 @@ private struct PracticeContent: View {
         }
     }
 
-    static func modeName(_ mode: SentenceMode) -> String {
-        switch mode {
-        case .shadow: "跟读"  // Shadowing
-        case .cloze: "填空"   // Cloze
-        case .recall: "回忆"  // Recall
-        }
-    }
 
     // MARK: - Sentence
 
@@ -122,7 +115,7 @@ private struct PracticeContent: View {
                 heard(engine.outcome?.heard)
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("判分中…").foregroundStyle(.secondary)  // Judging…
+                    Text("Judging…").foregroundStyle(.secondary)
                 }
             case .result:
                 if let outcome = engine.outcome {
@@ -134,9 +127,15 @@ private struct PracticeContent: View {
     }
 
     private func heard(_ text: String?) -> some View {
-        Text(text.map { $0.isEmpty ? "（没有听到）" : $0 } ?? "")  // (nothing heard)
-            .font(.title3)
-            .textSelection(.enabled)
+        Group {
+            if let text, !text.isEmpty {
+                Text(verbatim: text)
+            } else if text != nil {
+                Text("(nothing heard)")
+            }
+        }
+        .font(.title3)
+        .textSelection(.enabled)
     }
 
     @ViewBuilder
@@ -153,24 +152,24 @@ private struct PracticeContent: View {
     }
 
     /// One-line result: no explanations of elements (§0).
-    static func summary(_ outcome: PracticeEngine.Outcome) -> (String, Color, String) {
-        if outcome.skipped { return ("forward", .secondary, "已跳过") }  // Skipped
+    static func summary(_ outcome: PracticeEngine.Outcome) -> (String, Color, LocalizedStringKey) {
+        if outcome.skipped { return ("forward", .secondary, "Skipped") }
         let outcomes = outcome.events.map(\.outcome)
         if outcomes.isEmpty || outcomes.allSatisfy({ $0 == .notAttempted }) {
             let reason = outcome.events.first?.reason
             switch reason {
-            case .unclear: return ("questionmark.circle", .orange, "没听清，不计分")  // Unclear, not scored
-            case .paraphrase: return ("arrow.triangle.branch", .orange, "意思对，但没用目标表达")  // Right meaning, targets not used
-            default: return ("mic.slash", .secondary, "没有听到声音")  // No speech heard
+            case .unclear: return ("questionmark.circle", .orange, "Unclear, not scored")
+            case .paraphrase: return ("arrow.triangle.branch", .orange, "Right meaning, but without the target words")
+            default: return ("mic.slash", .secondary, "No speech heard")
             }
         }
         if outcomes.contains(.fail) {
-            return ("xmark.circle.fill", .red, "有错误")  // Mistakes
+            return ("xmark.circle.fill", .red, "Mistakes")
         }
         if outcomes.contains(.notAttempted) {
-            return ("checkmark.circle", .green, "正确（部分改写）")  // Correct (partly paraphrased)
+            return ("checkmark.circle", .green, "Correct (partly paraphrased)")
         }
-        return ("checkmark.circle.fill", .green, "正确")  // Correct
+        return ("checkmark.circle.fill", .green, "Correct")
     }
 
     // MARK: - Controls
@@ -178,26 +177,26 @@ private struct PracticeContent: View {
     private func controls(_ item: PracticeItem) -> some View {
         HStack(spacing: 12) {
             if engine.step == .result {
-                Button("重播", systemImage: "speaker.wave.2.fill") { engine.replay() }  // Replay
+                Button("Replay", systemImage: "speaker.wave.2.fill") { engine.replay() }
                 Spacer()
-                Button("下一句", systemImage: "arrow.right") {  // Next
+                Button("Next", systemImage: "arrow.right") {
                     Task { await engine.next() }
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.return, modifiers: [])
             } else {
                 if item.mode == .shadow {
-                    Button("重播", systemImage: "speaker.wave.2.fill") { engine.replay() }
+                    Button("Replay", systemImage: "speaker.wave.2.fill") { engine.replay() }
                         .disabled(engine.step != .prompt)
                 }
                 Spacer()
-                Button("跳过", systemImage: "forward") {  // Skip
+                Button("Skip", systemImage: "forward") {
                     Task { await engine.skip() }
                 }
                 .disabled(engine.step != .prompt && engine.step != .recording)
 
                 let recording = engine.step == .recording
-                Button(recording ? "停止" : "录音", systemImage: recording ? "stop.circle.fill" : "mic.fill") {  // Stop / Record
+                Button(recording ? "Stop" : "Record", systemImage: recording ? "stop.circle.fill" : "mic.fill") {
                     Task { await engine.toggleRecording() }
                 }
                 .buttonStyle(.borderedProminent)
@@ -219,9 +218,9 @@ private struct PracticeContent: View {
         centered {
             VStack(spacing: 16) {
                 Image(systemName: "icloud.slash").font(.largeTitle).foregroundStyle(.secondary)
-                Text("暂时无法练习").font(.title2.weight(.semibold))  // Practice unavailable
+                Text("Practice is unavailable").font(.title2.weight(.semibold))
                 Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Button("重试") { Task { await engine.retryAfterFailure() } }  // Retry
+                Button("Retry") { Task { await engine.retryAfterFailure() } }
                     .buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: 420)
@@ -230,5 +229,16 @@ private struct PracticeContent: View {
 
     private func centered(@ViewBuilder _ content: () -> some View) -> some View {
         content().frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension SentenceMode {
+    /// UI name (DESIGN.md §3.3), localized by the view's locale.
+    var displayName: LocalizedStringKey {
+        switch self {
+        case .shadow: "Shadowing"
+        case .cloze: "Cloze"
+        case .recall: "Recall"
+        }
     }
 }

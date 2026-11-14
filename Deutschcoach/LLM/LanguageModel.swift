@@ -1,7 +1,7 @@
 import Foundation
 
 // The LLM abstraction (AGENTS.md: LLM calls behind a protocol) and the data exchanged for
-// sentence generation (DESIGN.md §4.1) and answer judging (§3.4). Translation comes in M6.
+// sentence generation (DESIGN.md §4.1), answer judging (§3.4) and translating history (§3.1).
 
 nonisolated protocol LanguageModel: Sendable {
     /// Recorded in `batch.model` and `sentence.model`.
@@ -11,6 +11,30 @@ nonisolated protocol LanguageModel: Sendable {
 
     /// Judges a cloze or recall answer that local comparison could not accept (§3.4).
     func judge(_ request: JudgeRequest) async throws -> JudgeVerdict
+
+    /// Translates stored sentences into another native language (§3.1). Returns id → text.
+    func translate(_ request: TranslationRequest) async throws -> [Int64: String]
+
+    /// Checks that the API key is present and accepted, without using the model (§1).
+    func verifyAccess() async throws
+}
+
+// MARK: - Translation (§3.1)
+
+nonisolated struct TranslationRequest: Codable, Sendable, Equatable {
+    struct Item: Codable, Sendable, Equatable {
+        var id: Int64
+        var mode: SentenceMode
+        var de: String
+    }
+
+    var nativeLang: String
+    var sentences: [Item]
+
+    enum CodingKeys: String, CodingKey {
+        case nativeLang = "native_lang"
+        case sentences
+    }
 }
 
 // MARK: - Judge (§3.4)
@@ -145,6 +169,8 @@ nonisolated enum LLMError: Error, Equatable, LocalizedError {
     case overloaded
     case server(Int)
     case network(String)
+    /// The network monitor reports no connection; nothing was sent.
+    case offline
     /// `stop_reason: "refusal"`; the associated value is `stop_details.category` if any.
     case refused(String?)
     /// `stop_reason: "max_tokens"`: the output was cut off.
@@ -164,6 +190,7 @@ nonisolated enum LLMError: Error, Equatable, LocalizedError {
         case .overloaded: "The Claude API is overloaded."
         case .server(let status): "The Claude API returned a server error (\(status))."
         case .network(let message): "Network error: \(message)"
+        case .offline: "No network connection."
         case .refused(let category): "The model declined the request\(category.map { " (\($0))" } ?? "")."
         case .truncated: "The model's output was cut off (max_tokens)."
         case .noToolCall(let tool): "The model answered without calling \(tool)."

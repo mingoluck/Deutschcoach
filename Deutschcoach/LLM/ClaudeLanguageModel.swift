@@ -154,6 +154,50 @@ nonisolated struct ClaudeLanguageModel: LanguageModel {
         }
     }
 
+    func verifyAccess() async throws {
+        try await client.verifyKey()
+    }
+
+    // MARK: - Translation (§3.1)
+
+    func translate(_ request: TranslationRequest) async throws -> [Int64: String] {
+        let started = ContinuousClock.now
+        let data = try await client.send(try translationRequestBody(for: request))
+        logger.info("Translation response after \((ContinuousClock.now - started).description, privacy: .public): \(Self.summary(of: data), privacy: .public)")
+        return try Self.parseTranslations(data)
+    }
+
+    /// Same settings as the judge: low effort, thinking off, forced tool call.
+    func translationRequestBody(for request: TranslationRequest) throws -> Data {
+        let body: [String: Any] = [
+            "model": model,
+            "max_tokens": 4_096,
+            "system": [["type": "text", "text": TranslationPrompt.system]],
+            "tools": [TranslationPrompt.tool],
+            "tool_choice": ["type": "tool", "name": TranslationPrompt.toolName, "disable_parallel_tool_use": true],
+            "thinking": ["type": "disabled"],
+            "output_config": ["effort": judgeEffort],
+            "messages": [
+                ["role": "user", "content": [["type": "text", "text": try TranslationPrompt.userMessage(for: request)]]],
+            ],
+        ]
+        return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys, .withoutEscapingSlashes])
+    }
+
+    static func parseTranslations(_ data: Data) throws -> [Int64: String] {
+        let (_, input) = try toolInput(in: data, tool: TranslationPrompt.toolName)
+        guard let entries = input["translations"] as? [[String: Any]] else {
+            throw LLMError.malformedResponse("tool input has no translations array")
+        }
+        var result: [Int64: String] = [:]
+        for entry in entries {
+            guard let id = (entry["id"] as? NSNumber)?.int64Value, let text = entry["translation"] as? String else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { result[id] = trimmed }
+        }
+        return result
+    }
+
     // MARK: - Diagnostics
 
     /// stop_reason, usage and content block types, for diagnosis (no message text).

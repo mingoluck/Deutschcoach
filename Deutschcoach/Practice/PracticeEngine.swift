@@ -54,6 +54,8 @@ final class PracticeEngine {
     }
 
     private enum Retry {
+        /// Nothing failed (blocked because the network went away): just continue.
+        case resume
         case generate
         case judge(heard: String)
     }
@@ -69,11 +71,12 @@ final class PracticeEngine {
     /// A recording or recognition error; the sentence can be answered again.
     private(set) var speechError: String?
 
-    let nativeLang: String
+    private(set) var nativeLang: String
     private let store: PracticeStore
     private let model: any LanguageModel
     private let recognizer: any SpeechRecognizer
     private let speaker: any SentenceSpeaker
+    private let network: any NetworkMonitor
     private let recorder = AudioRecorder()
 
     private var started = false
@@ -81,6 +84,9 @@ final class PracticeEngine {
     private var batchDone = false
     private var retry: Retry?
     private var generationTask: Task<Void, Never>?
+    /// Identifies the current generation; results of an older one (before a language change)
+    /// are discarded.
+    private var generationToken = 0
     private var transcription: Task<Transcript, any Error>?
 
     init(
@@ -88,6 +94,7 @@ final class PracticeEngine {
         model: any LanguageModel,
         recognizer: any SpeechRecognizer = AppleSpeechRecognizer(),
         speaker: any SentenceSpeaker = Speaker(),
+        network: any NetworkMonitor = SystemNetworkMonitor(),
         nativeLang: String = NativeLanguage.current,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -95,6 +102,7 @@ final class PracticeEngine {
         self.model = model
         self.recognizer = recognizer
         self.speaker = speaker
+        self.network = network
         self.nativeLang = nativeLang
     }
 
@@ -108,6 +116,10 @@ final class PracticeEngine {
         guard !started else { return }
         started = true
         Task { await prepareSpeech() }
+        network.start { [weak self] online in
+            Task { await self?.networkChanged(online: online) }
+        }
+        if !network.isOnline { block(LLMError.offline, retry: .resume) }
         do {
             if let active = try await store.prepareOnLaunch() {
                 try await enter(batch: active)
@@ -117,7 +129,9 @@ final class PracticeEngine {
             }
         } catch {
             fail(error)
+            return
         }
+        await checkAccess()
     }
 
     /// Practice `batchId` (already `active`) and pre-generate the next batch.
@@ -145,7 +159,13 @@ final class PracticeEngine {
 
     private func startGeneration() {
         guard generationTask == nil else { return }
+        guard network.isOnline else {
+            block(LLMError.offline, retry: .generate)
+            return
+        }
         isGeneratingNext = true
+        generationToken += 1
+        let token = generationToken
         let store = self.store
         let model = self.model
         let nativeLang = self.nativeLang
@@ -161,11 +181,16 @@ final class PracticeEngine {
             } catch {
                 result = .failure(error)
             }
-            await self.generationFinished(result)
+            await self.generationFinished(result, token: token)
         }
     }
 
-    private func generationFinished(_ result: Result<Void, any Error>) async {
+    private func generationFinished(_ result: Result<Void, any Error>, token: Int) async {
+        guard token == generationToken else {
+            // Started before a language change: its batch (if any) is in the old language.
+            try? await store.discardBatches(notIn: nativeLang)
+            return
+        }
         generationTask = nil
         isGeneratingNext = false
         switch result {
@@ -190,21 +215,113 @@ final class PracticeEngine {
     private func block(_ error: any Error, retry: Retry) {
         stopRecording()
         speaker.stop()
-        self.retry = retry
+        // A real failure is what needs retrying; `.resume` never replaces it.
+        let keepPending: Bool
+        if case .resume = retry { keepPending = isBlocked && self.retry != nil } else { keepPending = false }
+        if !keepPending { self.retry = retry }
         status = .unavailable(error.localizedDescription)
+    }
+
+    var isBlocked: Bool {
+        if case .unavailable = status { return true }
+        return false
+    }
+
+    /// §1: losing the network blocks at once; when it comes back, the failed operation is
+    /// retried automatically.
+    func networkChanged(online: Bool) async {
+        logger.info("Network \(online ? "online" : "offline", privacy: .public)")
+        if online {
+            await retryAfterFailure()
+        } else {
+            if case .failed = status { return }
+            block(LLMError.offline, retry: .resume)
+        }
+    }
+
+    /// Settings saved or deleted the API key (§1): check it at once.
+    func apiKeyChanged() async {
+        await checkAccess()
+    }
+
+    /// §1: checks the API key (free, no model call) at launch and when it changes. A missing or
+    /// rejected key blocks at once instead of at the next LLM call; an accepted key lifts a block.
+    func checkAccess() async {
+        guard network.isOnline else { return }
+        if isBlocked {
+            await retryAfterFailure()  // re-checks the key itself
+            return
+        }
+        do {
+            try await model.verifyAccess()
+        } catch {
+            logger.error("API key check failed: \(error.localizedDescription, privacy: .public)")
+            block(error, retry: .resume)
+        }
     }
 
     /// The Retry button of the blocked screen.
     func retryAfterFailure() async {
-        guard case .unavailable = status, let retry else { return }
+        guard isBlocked, let retry else { return }
+        guard network.isOnline else {
+            status = .unavailable(LLMError.offline.localizedDescription)
+            return
+        }
         self.retry = nil
         switch retry {
+        case .resume:
+            do {
+                try await model.verifyAccess()
+            } catch {
+                block(error, retry: .resume)
+                return
+            }
+            status = item == nil ? .waitingForBatch : .practicing
+            if batchId == nil {
+                startGeneration()
+            } else if (try? await store.hasReadyBatch()) == false {
+                startGeneration()
+            }
         case .generate:
             status = batchId == nil ? .waitingForBatch : .practicing
             startGeneration()
         case .judge(let heard):
             status = .practicing
             await judge(heard: heard)
+        }
+    }
+
+    // MARK: - Native language (§3.1)
+
+    /// Discards the active and ready batches (and the one being generated) and generates a new
+    /// batch in `language`. Events already written are kept.
+    func changeLanguage(to language: String) async {
+        guard language != nativeLang else { return }
+        logger.info("Native language \(self.nativeLang, privacy: .public) → \(language, privacy: .public)")
+        nativeLang = language
+        stopRecording()
+        speaker.stop()
+        generationTask?.cancel()
+        generationTask = nil
+        generationToken += 1  // results of the running generation are discarded
+        isGeneratingNext = false
+        item = nil
+        outcome = nil
+        batchId = nil
+        batchDone = false
+        do {
+            try await store.discardCurrentBatches()
+        } catch {
+            fail(error)
+            return
+        }
+        guard started else { return }
+        if isBlocked {
+            retry = .generate
+            if network.isOnline { await retryAfterFailure() }
+        } else {
+            status = .waitingForBatch
+            startGeneration()
         }
     }
 
@@ -342,9 +459,11 @@ final class PracticeEngine {
         outcome = Outcome(heard: heard, skipped: false, events: [])
         do {
             let verdict = try await model.judge(Scorer.judgeRequest(for: item, heard: heard, nativeLang: nativeLang))
+            guard self.item == item else { return }  // the batch was discarded meanwhile
             let events = Scorer.events(from: verdict, targets: item.targets)
             await write(Outcome(heard: heard, skipped: false, verdict: verdict, events: events), status: .done, speakAnswer: false)
         } catch {
+            guard self.item == item else { return }
             // §3.4: the attempt is discarded; Retry re-sends the same answer.
             logger.error("Judge failed: \(error.localizedDescription, privacy: .public)")
             block(error, retry: .judge(heard: heard))

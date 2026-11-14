@@ -92,6 +92,21 @@ final class FakeLanguageModel: LanguageModel, @unchecked Sendable {
     var requests: [GenerationRequest] { calls.withLock { $0 } }
     var judgeRequests: [JudgeRequest] { judgeCalls.withLock { $0 } }
 
+    /// Thrown by `verifyAccess` when set.
+    let accessError = Mutex<LLMError?>(nil)
+    func verifyAccess() async throws {
+        if let error = accessError.withLock({ $0 }) { throw error }
+    }
+
+    private let translations = Mutex<[TranslationRequest]>([])
+    var translationRequests: [TranslationRequest] { translations.withLock { $0 } }
+
+    /// Translates each sentence as "<lang>: <German>".
+    func translate(_ request: TranslationRequest) async throws -> [Int64: String] {
+        translations.withLock { $0.append(request) }
+        return Dictionary(uniqueKeysWithValues: request.sentences.map { ($0.id, "\(request.nativeLang): \($0.de)") })
+    }
+
     func judge(_ request: JudgeRequest) async throws -> JudgeVerdict {
         judgeCalls.withLock { $0.append(request) }
         return try verdict(request)

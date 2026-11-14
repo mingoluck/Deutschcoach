@@ -6,26 +6,33 @@ struct DeutschcoachApp: App {
 
     var body: some Scene {
         WindowGroup {
-            // The lab tabs are temporary milestone screens.
             TabView {
                 Tab("Practice", systemImage: "mic.fill") {
                     PracticeView(model: model)
                 }
-                Tab("Generation", systemImage: "sparkles") {
-                    GenerationLabView(model: model)
+                Tab("History", systemImage: "clock") {
+                    if let history = model.history {
+                        HistoryView(history: history)
+                    }
                 }
-                Tab("Annotation", systemImage: "textformat") {
-                    AnnotationLabView()
-                }
+                #if DEBUG
+                // Milestone lab screens, Debug builds only (DESIGN.md §6).
                 Tab("Speech", systemImage: "waveform") {
                     SpeechLabView()
                 }
                 Tab("Database", systemImage: "cylinder") {
                     ContentView(model: model)
                 }
+                #endif
             }
             .frame(minWidth: 640, minHeight: 480)
+            .environment(\.locale, NativeLanguage.locale(for: model.nativeLanguage))
             .task { await model.start() }
+        }
+
+        Settings {
+            SettingsView(model: model)
+                .environment(\.locale, NativeLanguage.locale(for: model.nativeLanguage))
         }
     }
 }

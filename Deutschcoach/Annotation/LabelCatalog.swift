@@ -5,8 +5,17 @@ nonisolated enum NativeLanguage {
     static let defaultsKey = "nativeLanguage"
     static let fallback = "zh"
 
+    /// Supported native languages (DESIGN.md §2.1): code → name in that language.
+    static let supported: [(code: String, name: String)] = [("zh", "中文"), ("en", "English")]
+
+    /// The UI locale for a native language: the whole interface follows it (DESIGN.md §2.1).
+    static func locale(for language: String) -> Locale {
+        Locale(identifier: language == "zh" ? "zh-Hans" : language)
+    }
+
     static var current: String {
-        UserDefaults.standard.string(forKey: defaultsKey) ?? fallback
+        get { UserDefaults.standard.string(forKey: defaultsKey) ?? fallback }
+        set { UserDefaults.standard.set(newValue, forKey: defaultsKey) }
     }
 }
 

@@ -54,6 +54,25 @@ nonisolated struct PracticeStore: Sendable {
         return ready
     }
 
+    /// §3.1 language change: deletes the `generating`, `ready` and `active` batches.
+    /// Their sentences cascade; events stay.
+    func discardCurrentBatches() async throws {
+        try await database.writer.write { db in
+            let deleted = try Batch.filter(["generating", "ready", "active"].contains(Column("status"))).deleteAll(db)
+            logger.info("Discarded \(deleted) current batch(es)")
+        }
+    }
+
+    /// Deletes unfinished batches in another language (generated before a language change).
+    func discardBatches(notIn language: String) async throws {
+        try await database.writer.write { db in
+            let deleted = try Batch
+                .filter(["generating", "ready", "active"].contains(Column("status")) && Column("native_lang") != language)
+                .deleteAll(db)
+            if deleted > 0 { logger.info("Discarded \(deleted) batch(es) not in \(language, privacy: .public)") }
+        }
+    }
+
     func hasReadyBatch() async throws -> Bool {
         try await database.writer.read { db in
             try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM batch WHERE status = 'ready')") ?? false

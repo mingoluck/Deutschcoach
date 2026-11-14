@@ -4,7 +4,8 @@ import os
 
 private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "database")
 
-/// App-wide state. In M1 it opens the database and imports the bundled seed on launch.
+/// App-wide state: opens the database, imports the bundled seed, and owns the practice engine,
+/// the history and the settings actions.
 @Observable
 final class AppModel {
     enum Phase {
@@ -22,6 +23,16 @@ final class AppModel {
     /// The practice engine, owned here so that its work is not tied to a view's lifetime
     /// (a view's `.task` is cancelled when SwiftUI rebuilds or hides the view).
     private(set) var practice: PracticeEngine?
+    private(set) var history: HistoryModel?
+    private(set) var hasAPIKey = false
+    private(set) var nativeLanguage = NativeLanguage.current
+
+    let speaker = Speaker()
+    private let keychain = KeychainStore.apiKey
+    private var languageModel: ClaudeLanguageModel {
+        let keychain = self.keychain
+        return ClaudeLanguageModel(client: ClaudeClient(apiKey: { try keychain.read() }))
+    }
 
     /// Unit tests run inside the app; they must not touch the real database or the API.
     static var isRunningTests: Bool {
@@ -44,15 +55,44 @@ final class AppModel {
     }
 
     private func startPractice(_ database: AppDatabase) {
+        refreshKeyState()
         guard practice == nil, !Self.isRunningTests else { return }
-        let keychain = KeychainStore.apiKey
-        let engine = PracticeEngine(
-            database: database,
-            model: ClaudeLanguageModel(client: ClaudeClient(apiKey: { try keychain.read() }))
-        )
+        history = HistoryModel(database: database, model: languageModel)
+        let engine = PracticeEngine(database: database, model: languageModel, speaker: speaker, nativeLang: nativeLanguage)
         practice = engine
         // Unstructured: not cancelled together with the caller's task.
         Task { await engine.start() }
+    }
+
+    // MARK: - Settings (DESIGN.md §6)
+
+    func refreshKeyState() {
+        hasAPIKey = ((try? keychain.read()) ?? nil)?.isEmpty == false
+    }
+
+    /// Stores the key in the Keychain and checks it at once (§1).
+    func saveAPIKey(_ key: String) async throws {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        try keychain.save(key)
+        refreshKeyState()
+        await practice?.apiKeyChanged()
+    }
+
+    /// Deleting the key blocks practice at once (§1).
+    func deleteAPIKey() async throws {
+        try keychain.delete()
+        refreshKeyState()
+        await practice?.apiKeyChanged()
+    }
+
+    /// §3.1: discards the current batches and generates a new one in `language`.
+    func setNativeLanguage(_ language: String) async {
+        guard language != nativeLanguage else { return }
+        NativeLanguage.current = language
+        nativeLanguage = language
+        await practice?.changeLanguage(to: language)
+        await history?.reload(language: language)
     }
 
     func reimportSeed() async {
