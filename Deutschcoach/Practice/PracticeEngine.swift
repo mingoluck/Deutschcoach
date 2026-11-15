@@ -19,6 +19,8 @@ extension Speaker: SentenceSpeaker {}
 final class PracticeEngine {
     enum Status: Equatable {
         case starting
+        /// §3.1: the library has nothing to build a batch from; the user must import seeds.
+        case emptyLibrary
         /// No sentence to practice until the batch being generated is ready.
         case waitingForBatch
         case practicing
@@ -72,6 +74,7 @@ final class PracticeEngine {
     private(set) var speechError: String?
 
     private(set) var nativeLang: String
+    private(set) var userLevel: CEFRLevel
     private let store: PracticeStore
     private let model: any LanguageModel
     private let recognizer: any SpeechRecognizer
@@ -96,6 +99,7 @@ final class PracticeEngine {
         speaker: any SentenceSpeaker = Speaker(),
         network: any NetworkMonitor = SystemNetworkMonitor(),
         nativeLang: String = NativeLanguage.current,
+        userLevel: CEFRLevel = .a1,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         store = PracticeStore(database: database, now: now)
@@ -104,6 +108,7 @@ final class PracticeEngine {
         self.speaker = speaker
         self.network = network
         self.nativeLang = nativeLang
+        self.userLevel = userLevel
     }
 
     var canRecord: Bool {
@@ -119,19 +124,76 @@ final class PracticeEngine {
         network.start { [weak self] online in
             Task { await self?.networkChanged(online: online) }
         }
-        if !network.isOnline { block(LLMError.offline, retry: .resume) }
+        await launch()
+    }
+
+    /// The launch sequence of §3.1; also re-run after the library or the database changed.
+    private func launch() async {
         do {
             if let active = try await store.prepareOnLaunch() {
+                if !network.isOnline { block(LLMError.offline, retry: .resume) }
                 try await enter(batch: active)
+            } else if try await !hasContent() {
+                // §3.1: checked before the LLM-unavailable block; the LLM is not called.
+                status = .emptyLibrary
+                return
             } else {
                 status = .waitingForBatch
-                startGeneration()
+                startGeneration()  // blocks at once when offline
             }
         } catch {
             fail(error)
             return
         }
         await checkAccess()
+    }
+
+    private func hasContent() async throws -> Bool {
+        let level = userLevel
+        return try await store.database.writer.read { db in
+            try ElementPicker.hasPracticableContent(upTo: level, in: db)
+        }
+    }
+
+    /// Stops everything in flight: recording, speech, generation, the current sentence.
+    private func stopAll() {
+        stopRecording()
+        speaker.stop()
+        generationTask?.cancel()
+        generationTask = nil
+        generationToken += 1  // results of the running generation are discarded
+        isGeneratingNext = false
+        item = nil
+        outcome = nil
+        batchId = nil
+        batchDone = false
+        retry = nil
+    }
+
+    /// The library changed (seeds imported): restart as on launch (§2.5, §3.1). Batches stay.
+    func libraryChanged() async {
+        guard started else { return }
+        switch status {
+        case .emptyLibrary, .failed:
+            stopAll()
+            status = .starting
+            await launch()
+        default:
+            // Practicing or waiting: the next generation picks from the new content anyway.
+            break
+        }
+    }
+
+    /// §2.6: stops all work before practice records or the whole database are deleted.
+    func prepareForDataReset() {
+        stopAll()
+        status = .starting
+    }
+
+    /// §2.6: after the deletion, practice restarts as on launch.
+    func dataWasReset() async {
+        guard started else { return }
+        await launch()
     }
 
     /// Practice `batchId` (already `active`) and pre-generate the next batch.
@@ -141,7 +203,7 @@ final class PracticeEngine {
         logger.info("Practicing batch #\(id)")
         try await showNextSentence()
         // §3.1: as soon as a batch is active, generate the next one (also the LLM probe).
-        if try await !store.hasReadyBatch() { startGeneration() }
+        if try await !store.hasReadyBatch(), try await hasContent() { startGeneration() }
     }
 
     /// Moves to the next batch: the ready one if any, otherwise waits for generation.
@@ -150,6 +212,9 @@ final class PracticeEngine {
         outcome = nil
         if let next = try await store.activeOrPromote() {
             try await enter(batch: next)
+        } else if try await !hasContent() {
+            batchId = nil
+            status = .emptyLibrary
         } else {
             batchId = nil
             status = .waitingForBatch
@@ -169,15 +234,16 @@ final class PracticeEngine {
         let store = self.store
         let model = self.model
         let nativeLang = self.nativeLang
+        let userLevel = self.userLevel
         generationTask = Task {
-            let result: Result<Void, any Error>
+            let result: Result<Int64, any Error>
             do {
                 let request = try await store.database.writer.read { db in
-                    try ElementPicker(nativeLang: nativeLang).makeRequest(from: db)
+                    try ElementPicker(nativeLang: nativeLang, userLevel: userLevel).makeRequest(from: db)
                 }
                 logger.info("Generating a batch: modes \(request.sentences.map(\.mode.rawValue), privacy: .public)")
-                _ = try await BatchGenerator(database: store.database, model: model).generate(request)
-                result = .success(())
+                let report = try await BatchGenerator(database: store.database, model: model).generate(request)
+                result = .success(report.batchId)
             } catch {
                 result = .failure(error)
             }
@@ -185,10 +251,10 @@ final class PracticeEngine {
         }
     }
 
-    private func generationFinished(_ result: Result<Void, any Error>, token: Int) async {
+    private func generationFinished(_ result: Result<Int64, any Error>, token: Int) async {
         guard token == generationToken else {
-            // Started before a language change: its batch (if any) is in the old language.
-            try? await store.discardBatches(notIn: nativeLang)
+            // Started before a language or level change, or a reset: its batch is stale.
+            if case .success(let id) = result { try? await store.discardReadyBatch(id) }
             return
         }
         generationTask = nil
@@ -213,6 +279,8 @@ final class PracticeEngine {
     // MARK: - LLM unavailable
 
     private func block(_ error: any Error, retry: Retry) {
+        // §3.1: an empty library is shown before the LLM-unavailable block.
+        if status == .emptyLibrary { return }
         stopRecording()
         speaker.stop()
         // A real failure is what needs retrying; `.resume` never replaces it.
@@ -235,6 +303,7 @@ final class PracticeEngine {
             await retryAfterFailure()
         } else {
             if case .failed = status { return }
+            if status == .emptyLibrary || status == .starting { return }
             block(LLMError.offline, retry: .resume)
         }
     }
@@ -247,7 +316,7 @@ final class PracticeEngine {
     /// §1: checks the API key (free, no model call) at launch and when it changes. A missing or
     /// rejected key blocks at once instead of at the next LLM call; an accepted key lifts a block.
     func checkAccess() async {
-        guard network.isOnline else { return }
+        guard network.isOnline, status != .emptyLibrary else { return }
         if isBlocked {
             await retryAfterFailure()  // re-checks the key itself
             return
@@ -322,6 +391,47 @@ final class PracticeEngine {
         } else {
             status = .waitingForBatch
             startGeneration()
+        }
+    }
+
+    // MARK: - User level (§3.2)
+
+    /// Discards the `ready` batch and any batch being generated, and generates the next one at
+    /// `level`. The `active` batch is finished as is.
+    func changeLevel(to level: CEFRLevel) async {
+        guard level != userLevel else { return }
+        logger.info("User level \(self.userLevel.rawValue, privacy: .public) → \(level.rawValue, privacy: .public)")
+        userLevel = level
+        generationTask?.cancel()
+        generationTask = nil
+        generationToken += 1
+        isGeneratingNext = false
+        do {
+            try await store.discardPendingBatches()
+        } catch {
+            fail(error)
+            return
+        }
+        guard started else { return }
+        switch status {
+        case .emptyLibrary, .starting:
+            stopAll()
+            await launch()
+        case .practicing, .waitingForBatch:
+            do {
+                if try await hasContent() {
+                    startGeneration()
+                } else if batchId == nil {
+                    status = .emptyLibrary
+                }
+            } catch {
+                fail(error)
+            }
+        case .unavailable:
+            retry = .generate
+            if network.isOnline { await retryAfterFailure() }
+        case .failed:
+            break
         }
     }
 

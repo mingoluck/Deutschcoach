@@ -41,8 +41,11 @@ nonisolated enum GenerationPrompt {
     6. Translations: for mode `recall`, translate literally so that the translation determines \
     the German sentence uniquely: express tense with time words, distinguish du and Sie \
     (in Chinese "你" and "您"), avoid content with several common German phrasings, keep it \
-    short and simple. For `shadow` and `cloze`, the translation may be more natural.
+    short and simple. For `shadow` and `cloze`, the translation may be more natural. Every \
+    translation is written in `native_lang` (for "zh" in Simplified Chinese), never in English \
+    unless `native_lang` is "en".
     7. Follow the annotation rules below exactly.
+    8. Write numbers, times and dates in words (acht Uhr, am dritten Mai), never in digits.
 
     # Sentence format
 
@@ -97,7 +100,9 @@ nonisolated enum GenerationPrompt {
     3. The sich of an inherently reflexive verb belongs to `Pred`; a non-inherent sich goes \
     into `ObjAcc` or `ObjDat` by its case.
     4. Prepositional phrases: required by the verb → `ObjPrep`; free time/place/manner/cause \
-    → `Adv*`; modifying a noun → `Attr`.
+    → `Adv*`; modifying a noun → `Attr`. `ObjPrep` only when the verb fixes the preposition \
+    (warten auf, denken an, sich freuen über); a place or direction with a verb of motion or \
+    position (zu den Lehrern gehen, nach Berlin fahren, im Garten sitzen) is `AdvL`.
     5. When a whole clause functions as a constituent (e.g. a dass clause as object), add a \
     second span with that constituent over the same tokens.
     6. At most two levels of nested constituents; merge deeper nesting into the outer level.

@@ -40,6 +40,18 @@ nonisolated struct SentenceValidator: Sendable {
     static let maxWords = 25
 
     var lexicon: VocabLexicon
+    /// The language the translation must be written in (`zh`, `en`); `nil` skips the check.
+    var nativeLang: String?
+
+    /// §4.3 rule 7: a Chinese translation contains Han characters, an English one none.
+    static func isWritten(_ text: String, in language: String) -> Bool {
+        let han = text.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) || (0x3400...0x4DBF).contains($0.value) }
+        switch language {
+        case "zh": return han
+        case "en": return !han && text.unicodeScalars.contains { CharacterSet.letters.contains($0) && $0.isASCII }
+        default: return true
+        }
+    }
 
     func validate(_ sentence: GeneratedSentence, for request: SentenceRequest) -> Result<ValidatedSentence, ValidationFailure> {
         // Rule 1: the position is the requested one.
@@ -53,6 +65,9 @@ nonisolated struct SentenceValidator: Sendable {
         let translation = sentence.translation.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !de.isEmpty else { return fail("empty sentence") }
         guard !translation.isEmpty else { return fail("empty translation") }
+        if let nativeLang, !Self.isWritten(translation, in: nativeLang) {
+            return fail("translation is not written in \(nativeLang): \(translation)")
+        }
 
         // Rule 2: rows of 4 or 5 items whose forms reproduce the sentence.
         if let row = sentence.words.firstIndex(where: { $0.count != 4 && $0.count != 5 }) {

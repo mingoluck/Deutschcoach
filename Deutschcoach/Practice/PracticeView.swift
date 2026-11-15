@@ -29,6 +29,8 @@ private struct PracticeContent: View {
             switch engine.status {
             case .starting:
                 centered { ProgressView() }
+            case .emptyLibrary:
+                emptyLibrary
             case .waitingForBatch:
                 centered { ProgressView("Generating sentences…") }
             case .unavailable(let message):
@@ -47,6 +49,27 @@ private struct PracticeContent: View {
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // MARK: - Empty library (§3.1)
+
+    @Environment(\.openSettings) private var openSettings
+
+    private var emptyLibrary: some View {
+        centered {
+            VStack(spacing: 14) {
+                Image(systemName: "books.vertical")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                Text("The library is empty; import a seed first.")
+                    .font(.title3)
+                Button("Open Library Settings") {
+                    UserDefaults.standard.set(SettingsTab.library.rawValue, forKey: SettingsTab.defaultsKey)
+                    openSettings()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
     }
 
     // MARK: - Header

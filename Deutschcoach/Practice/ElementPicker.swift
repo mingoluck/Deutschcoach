@@ -13,6 +13,10 @@ nonisolated struct ElementPicker {
         var kind: ElementKind
         var title: String
         var sense: String?
+        var key = ""
+        var freqRank: Int?
+        /// Vocabulary never practiced (no mastery row): admitted through the new-vocabulary window.
+        var isNew = false
         var pronunciation = MasteryRules.minLevel
         var recall = MasteryRules.minLevel
         /// Latest `last_seen_at` of both dimensions.
@@ -36,10 +40,12 @@ nonisolated struct ElementPicker {
     /// Staleness is capped at this many days; never-practiced elements count as this.
     static let maxStaleDays = 14.0
     static let patternChance = 0.3
+    /// §3.2: at most this many new vocabulary elements per batch, in frequency order.
+    static let newVocabWindow = 5
 
     var count = 10
     var nativeLang = NativeLanguage.current
-    /// Fixed until the settings screen offers a choice (§3.2).
+    /// The app passes the level from Settings (`UserLevel.current`).
     var userLevel = CEFRLevel.a1
     var now: Date = Date()
 
@@ -50,14 +56,28 @@ nonisolated struct ElementPicker {
         return makeRequest(candidates: try Self.loadCandidates(upTo: userLevel, from: db), using: &rng)
     }
 
-    /// Active elements at or below `level`, with their mastery and prerequisites.
+    /// §3.1: whether a batch can be built at `level` — at least one active, targetable vocabulary
+    /// element and one active grammar point at or below it.
+    static func hasPracticableContent(upTo level: CEFRLevel, in db: Database) throws -> Bool {
+        let levels = level.andBelow
+        let placeholders = levels.map { _ in "?" }.joined(separator: ",")
+        func exists(_ kind: ElementKind) throws -> Bool {
+            try Bool.fetchOne(db, sql: """
+                SELECT EXISTS (SELECT 1 FROM element WHERE kind = ? AND status = 'active' AND targetable = 1
+                               AND level IN (\(placeholders)))
+                """, arguments: StatementArguments([kind.rawValue] + levels.map(\.rawValue))) ?? false
+        }
+        return try exists(.vocab) && exists(.grammar)
+    }
+
+    /// Active, targetable elements at or below `level`, with their mastery and prerequisites.
     static func loadCandidates(upTo level: CEFRLevel, from db: Database) throws -> [Candidate] {
-        let levels = CEFRLevel.allCases.prefix { $0 != level } + [level]
+        let levels = level.andBelow
         let placeholders = levels.map { _ in "?" }.joined(separator: ",")
         let rows = try Row.fetchAll(db, sql: """
-            SELECT e.id, e.kind, e.title, v.sense FROM element e
+            SELECT e.id, e.key, e.kind, e.title, e.freq_rank, v.sense FROM element e
             LEFT JOIN vocab_detail v ON v.element_id = e.id
-            WHERE e.status = 'active' AND e.level IN (\(placeholders))
+            WHERE e.status = 'active' AND e.targetable = 1 AND e.level IN (\(placeholders))
             ORDER BY e.id
             """, arguments: StatementArguments(levels.map(\.rawValue)))
         var candidates: [Int64: Candidate] = [:]
@@ -65,10 +85,14 @@ nonisolated struct ElementPicker {
         for row in rows {
             guard let kind = ElementKind(rawValue: row["kind"]) else { continue }
             let id: Int64 = row["id"]
-            candidates[id] = Candidate(id: id, kind: kind, title: row["title"], sense: row["sense"])
+            candidates[id] = Candidate(
+                id: id, kind: kind, title: row["title"], sense: row["sense"],
+                key: row["key"], freqRank: row["freq_rank"], isNew: kind == .vocab
+            )
             order.append(id)
         }
         for mastery in try Mastery.fetchAll(db) where candidates[mastery.elementId] != nil {
+            candidates[mastery.elementId]!.isNew = false
             switch mastery.dimension {
             case .pronunciation: candidates[mastery.elementId]!.pronunciation = mastery.level
             case .recall: candidates[mastery.elementId]!.recall = mastery.level
@@ -97,20 +121,38 @@ nonisolated struct ElementPicker {
         }.map(\.id))
         let nowSeconds = now.timeIntervalSince1970
 
+        // §3.2: new vocabulary is admitted in frequency order (missing rank last, ties by key).
+        let newOrder = candidates.filter(\.isNew).sorted { a, b in
+            let ra = a.freqRank ?? .max, rb = b.freqRank ?? .max
+            return ra != rb ? ra < rb : a.key < b.key
+        }
+        let newRank = Dictionary(uniqueKeysWithValues: newOrder.enumerated().map { ($1.id, $0) })
+        var window = Self.newVocabWindow
+        func admitted(_ candidate: Candidate) -> Bool {
+            guard let rank = newRank[candidate.id] else { return true }
+            return rank < window
+        }
+
         var usedInBatch: Set<Int64> = []
         var sentences: [SentenceRequest] = []
         for position in 1...count {
             var picked: [Candidate] = []
             func draw(_ kind: ElementKind) {
                 let pool = candidates.filter { $0.kind == kind && !picked.contains($0) }
-                // §3.2: relax the prerequisite filter first, then allow repeats within the batch.
-                let tiers = [
-                    pool.filter { eligible.contains($0.id) && !usedInBatch.contains($0.id) },
-                    pool.filter { !usedInBatch.contains($0.id) },
-                    pool.filter { eligible.contains($0.id) },
-                    pool,
-                ]
-                guard let tier = tiers.first(where: { !$0.isEmpty }) else { return }
+                func preferred() -> [Candidate] {
+                    pool.filter { admitted($0) && eligible.contains($0.id) && !usedInBatch.contains($0.id) }
+                }
+                var tier = preferred()
+                // §3.2: running out — first widen the new-vocabulary window, then relax the
+                // prerequisite filter, then allow repeats within the batch.
+                while tier.isEmpty && kind == .vocab && window < newOrder.count {
+                    window += 1
+                    tier = preferred()
+                }
+                if tier.isEmpty { tier = pool.filter { !usedInBatch.contains($0.id) } }
+                if tier.isEmpty { tier = pool.filter { eligible.contains($0.id) } }
+                if tier.isEmpty { tier = pool }
+                guard !tier.isEmpty else { return }
                 let weights = tier.map { Self.weight(of: $0, now: nowSeconds, using: &rng) }
                 let chosen = tier[Self.weightedIndex(weights, using: &rng)]
                 picked.append(chosen)
@@ -155,5 +197,22 @@ nonisolated struct ElementPicker {
             point -= weight
         }
         return weights.count - 1
+    }
+}
+
+/// The learner's CEFR level, chosen in Settings (DESIGN.md §3.2).
+nonisolated enum UserLevel {
+    static let defaultsKey = "userLevel"
+
+    static var current: CEFRLevel {
+        get { UserDefaults.standard.string(forKey: defaultsKey).flatMap(CEFRLevel.init(rawValue:)) ?? .a1 }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) }
+    }
+}
+
+nonisolated extension CEFRLevel {
+    /// This level and all levels below it.
+    var andBelow: [CEFRLevel] {
+        Array(CEFRLevel.allCases.prefix { $0 != self }) + [self]
     }
 }

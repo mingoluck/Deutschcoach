@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Temporary M1 debug screen: shows the database location and content counts.
-/// Replaced by the practice screen in later milestones.
+/// Debug-only lab screen: shows the database location and content counts.
 struct ContentView: View {
     let model: AppModel
 
@@ -50,16 +49,9 @@ struct ContentView: View {
                 }
             }
 
-            HStack {
-                Button("Re-import Seed") {
-                    Task { await model.reimportSeed() }
-                }
-                if let report = model.lastImport {
-                    Text("Last import: \(report.elements) elements, \(report.wordForms) forms, \(report.links) links")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Text("Seeds are imported in Settings › Library.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

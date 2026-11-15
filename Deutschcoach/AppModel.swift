@@ -4,8 +4,8 @@ import os
 
 private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "database")
 
-/// App-wide state: opens the database, imports the bundled seed, and owns the practice engine,
-/// the history and the settings actions.
+/// App-wide state: opens the database and owns the practice engine, the history, and the
+/// settings and library actions. Nothing is imported automatically (DESIGN.md §2.5).
 @Observable
 final class AppModel {
     enum Phase {
@@ -17,6 +17,7 @@ final class AppModel {
     private(set) var phase: Phase = .starting
     private(set) var databasePath: String?
     private(set) var summary = ContentSummary()
+    private(set) var library = LibraryStats()
     private(set) var lastImport: SeedImporter.Report?
 
     private(set) var database: AppDatabase?
@@ -26,6 +27,7 @@ final class AppModel {
     private(set) var history: HistoryModel?
     private(set) var hasAPIKey = false
     private(set) var nativeLanguage = NativeLanguage.current
+    private(set) var userLevel = UserLevel.current
 
     let speaker = Speaker()
     private let keychain = KeychainStore.apiKey
@@ -45,7 +47,7 @@ final class AppModel {
             let database = try AppDatabase.openShared()
             self.database = database
             databasePath = database.path
-            try await importSeed()
+            try await refreshLibrary()
             phase = .ready
             startPractice(database)
         } catch {
@@ -58,7 +60,10 @@ final class AppModel {
         refreshKeyState()
         guard practice == nil, !Self.isRunningTests else { return }
         history = HistoryModel(database: database, model: languageModel)
-        let engine = PracticeEngine(database: database, model: languageModel, speaker: speaker, nativeLang: nativeLanguage)
+        let engine = PracticeEngine(
+            database: database, model: languageModel, speaker: speaker,
+            nativeLang: nativeLanguage, userLevel: userLevel
+        )
         practice = engine
         // Unstructured: not cancelled together with the caller's task.
         Task { await engine.start() }
@@ -95,25 +100,64 @@ final class AppModel {
         await history?.reload(language: language)
     }
 
-    func reimportSeed() async {
-        do {
-            try await importSeed()
-        } catch {
-            phase = .failed(error.localizedDescription)
-        }
+    /// §3.2: the next batch is generated at `level`; the active batch is finished as is.
+    func setUserLevel(_ level: CEFRLevel) async {
+        guard level != userLevel else { return }
+        UserLevel.current = level
+        userLevel = level
+        await practice?.changeLevel(to: level)
     }
 
-    private func importSeed() async throws {
+    // MARK: - Library (DESIGN.md §2.5, §2.6)
+
+    func refreshLibrary() async throws {
         guard let database else { return }
-        let seed = try SeedImporter.loadBundledSeed()
-        let report = try await SeedImporter.importSeed(seed, into: database)
-        lastImport = report
+        library = try await database.libraryStats()
         summary = try await database.contentSummary()
+    }
+
+    /// Reads the picked files and checks them; nothing is written.
+    func previewImport(of urls: [URL]) async throws -> SeedImporter.Preview {
+        guard let database else { throw CocoaError(.fileReadUnknown) }
+        let loaded = await Task.detached { SeedImporter.load(urls: urls) }.value
+        return try await SeedImporter.preview(loaded.sources, loadIssues: loaded.issues, database: database)
+    }
+
+    func importSeeds(_ preview: SeedImporter.Preview) async throws {
+        guard let database, preview.canImport else { return }
+        let report = try await SeedImporter.importSeeds(preview.sources, into: database)
+        lastImport = report
         logger.info("""
-            Seed imported into \(database.path, privacy: .public): \
-            \(report.elements) elements, \(report.wordForms) forms, \(report.links) links; \
-            database now has \(self.summary.totalElements) elements, \
-            \(self.summary.wordForms) forms, \(self.summary.links) links
+            Imported \(report.files) seed file(s): \(report.elements) elements, \
+            \(report.wordForms) forms, \(report.links) links
             """)
+        try await refreshLibrary()
+        await practice?.libraryChanged()
+    }
+
+    /// §2.6: backup, then delete events, mastery and batches. Content stays.
+    func clearPracticeRecords() async throws {
+        try await resetData { try await $0.clearPracticeRecords() }
+    }
+
+    /// §2.6: backup, then delete everything, content included.
+    func resetDatabase() async throws {
+        try await resetData { try await $0.resetAllData() }
+    }
+
+    private func resetData(_ delete: (AppDatabase) async throws -> Void) async throws {
+        guard let database else { return }
+        try database.backup()
+        practice?.prepareForDataReset()
+        do {
+            try await delete(database)
+        } catch {
+            await practice?.dataWasReset()
+            throw error
+        }
+        lastImport = nil
+        try await refreshLibrary()
+        await history?.reload(language: nativeLanguage)
+        await practice?.dataWasReset()
     }
 }

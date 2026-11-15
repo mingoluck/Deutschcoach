@@ -1,0 +1,812 @@
+{
+  "seed": {
+    "id": "core_b1",
+    "title": "Grammatik und Redemittel B1",
+    "version": 1
+  },
+  "elements": [
+    {
+      "key": "gram.tense.praeteritum",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Präteritum (regelmäßige und unregelmäßige Verben)",
+      "reviewed": true,
+      "grammar": {
+        "category": "tense",
+        "annotation_labels": [
+          "Fin",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.tense.praeteritum_modal",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.tense.plusquamperfekt",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Plusquamperfekt (hatte/war + Partizip II)",
+      "reviewed": true,
+      "grammar": {
+        "category": "tense",
+        "annotation_labels": [
+          "AUX",
+          "Part2",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.tense.praeteritum",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.tense.perfekt_sein",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.tense.futur1",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Futur I: werden + Infinitiv",
+      "reviewed": true,
+      "grammar": {
+        "category": "tense",
+        "annotation_labels": [
+          "AUX",
+          "Inf",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.modal.inf",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.passive.praesens",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Passiv Präsens: wird + Partizip II",
+      "reviewed": true,
+      "grammar": {
+        "category": "voice",
+        "annotation_labels": [
+          "AUX",
+          "Part2",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.tense.perfekt_haben",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.passive.praeteritum",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Passiv Präteritum: wurde + Partizip II",
+      "reviewed": true,
+      "grammar": {
+        "category": "voice",
+        "annotation_labels": [
+          "AUX",
+          "Part2",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.passive.praesens",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.passive.modal",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Passiv mit Modalverb (muss repariert werden)",
+      "reviewed": true,
+      "grammar": {
+        "category": "voice",
+        "annotation_labels": [
+          "AUX",
+          "Part2",
+          "Inf",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.passive.praesens",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.modal.inf",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.konj2.haette_waere",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Konjunktiv II: hätte, wäre",
+      "reviewed": true,
+      "grammar": {
+        "category": "mood",
+        "annotation_labels": [
+          "AUX",
+          "Fin",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.konj2.wuerde",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.konj2.irreal",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Irreale Bedingung: Wenn ich … hätte, würde ich …",
+      "reviewed": true,
+      "grammar": {
+        "category": "mood",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub",
+          "AUX"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.konj2.haette_waere",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.sub.wenn",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.konj2.ratschlag",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Ratschlag mit an deiner Stelle / du solltest",
+      "reviewed": true,
+      "grammar": {
+        "category": "mood",
+        "annotation_labels": [
+          "AUX",
+          "Inf",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.konj2.wuerde",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.obwohl",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Nebensatz mit obwohl",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.weil",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.als_wenn",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Temporale Nebensätze: als (einmal, Vergangenheit) und wenn (wiederholt)",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.wenn",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.bevor_nachdem",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Nebensätze mit bevor und nachdem",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.weil",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.tense.plusquamperfekt",
+          "kind": "related"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.waehrend_seit_bis",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Nebensätze mit während, seit(dem), bis",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.weil",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.damit_umzu",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Finalsätze: damit und um … zu",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub",
+          "Inf"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.inf.zu",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.ob",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Indirekte Frage mit ob",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.dass",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.indirect_w",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Indirekte W-Frage (Weißt du, wo …?)",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.dass",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.q.w_frage",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.rel.nom_acc",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Relativsatz im Nominativ und Akkusativ (der, den, das, die)",
+      "reviewed": true,
+      "grammar": {
+        "category": "relative_clause",
+        "annotation_labels": [
+          "PRON",
+          "Rel"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.weil",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.rel.dat_prep",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Relativsatz im Dativ und mit Präposition (dem, mit dem)",
+      "reviewed": true,
+      "grammar": {
+        "category": "relative_clause",
+        "annotation_labels": [
+          "PRON",
+          "Rel",
+          "Dat"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.rel.nom_acc",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.inf.zu",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Infinitiv mit zu (Ich habe keine Zeit, … zu …)",
+      "reviewed": true,
+      "grammar": {
+        "category": "verb",
+        "annotation_labels": [
+          "PART",
+          "Inf"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.modal.inf",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.verb.lassen",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "lassen + Infinitiv (Ich lasse das Auto reparieren.)",
+      "reviewed": true,
+      "grammar": {
+        "category": "verb",
+        "annotation_labels": [
+          "AUX",
+          "Inf",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.modal.inf",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.gen.case",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Genitiv (des Mannes, der Frau) und Präpositionen wegen, trotz, während",
+      "reviewed": true,
+      "grammar": {
+        "category": "case",
+        "annotation_labels": [
+          "Gen",
+          "Attr",
+          "ADP"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.gen.names",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.dat.indirect_obj",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.noun.n_decl",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "n-Deklination (den Kunden, dem Studenten)",
+      "reviewed": true,
+      "grammar": {
+        "category": "noun",
+        "annotation_labels": [
+          "NOUN",
+          "Acc",
+          "Dat"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.acc.direct_obj",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.adj.decl_zero",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Adjektivdeklination ohne Artikel (frisches Brot, mit kaltem Wasser)",
+      "reviewed": true,
+      "grammar": {
+        "category": "adjective",
+        "annotation_labels": [
+          "ADJ"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.adj.decl_indefinite",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.conj.twopart",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Zweiteilige Konnektoren: entweder … oder, sowohl … als auch, weder … noch, nicht nur … sondern auch",
+      "reviewed": true,
+      "grammar": {
+        "category": "connector",
+        "annotation_labels": [
+          "CCONJ"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.conj.und_oder_aber",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.conj.je_desto",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "je … desto + Komparativ",
+      "reviewed": true,
+      "grammar": {
+        "category": "connector",
+        "annotation_labels": [
+          "SCONJ",
+          "ADJ"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.adj.comparative",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.conj.adverbs",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Konnektoren mit Verb an zweiter Stelle: deshalb, trotzdem, außerdem, dann",
+      "reviewed": true,
+      "grammar": {
+        "category": "connector",
+        "annotation_labels": [
+          "ADV",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.wo.inversion",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.prep.da_wo",
+      "kind": "grammar",
+      "level": "B1",
+      "title": "Präpositionaladverbien: darauf, dafür, worauf, wofür",
+      "reviewed": true,
+      "grammar": {
+        "category": "preposition",
+        "annotation_labels": [
+          "ADV",
+          "ObjPrep"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.verb.prep",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "pat.meiner_meinung_nach",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Meiner Meinung nach ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Meiner Meinung nach {CLAUSE:v2}.",
+        "function": "die eigene Meinung sagen",
+        "slots": {
+          "CLAUSE": {
+            "order": "V2"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.wo.inversion",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.ich_bin_der_meinung",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Ich bin der Meinung, dass ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Ich bin der Meinung, dass {CLAUSE}.",
+        "function": "die eigene Meinung sagen",
+        "slots": {
+          "CLAUSE": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.sub.dass",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.es_kommt_darauf_an",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Es kommt darauf an, ob ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Es kommt darauf an, ob {CLAUSE}.",
+        "function": "eine Bedingung nennen",
+        "slots": {
+          "CLAUSE": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.sub.ob",
+          "kind": "uses"
+        },
+        {
+          "to": "gram.prep.da_wo",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.es_lohnt_sich",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Es lohnt sich, ... zu ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Es lohnt sich, {INF_ZU}.",
+        "function": "etwas empfehlen",
+        "slots": {
+          "INF_ZU": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.inf.zu",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.es_waere_schoen_wenn",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Es wäre schön, wenn ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Es wäre schön, wenn {CLAUSE}.",
+        "function": "einen Wunsch äußern",
+        "slots": {
+          "CLAUSE": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.konj2.haette_waere",
+          "kind": "uses"
+        },
+        {
+          "to": "gram.sub.wenn",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.was_halten_sie_von",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Was halten Sie von ...?",
+      "reviewed": true,
+      "pattern": {
+        "template": "Was halten Sie von {NOUN:dat}?",
+        "function": "nach der Meinung fragen",
+        "slots": {
+          "NOUN": {
+            "case": "Dat"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.q.w_frage",
+          "kind": "uses"
+        },
+        {
+          "to": "gram.prep.dat",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.ich_schlage_vor",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Ich schlage vor, dass ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Ich schlage vor, dass {CLAUSE}.",
+        "function": "einen Vorschlag machen",
+        "slots": {
+          "CLAUSE": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.sub.dass",
+          "kind": "uses"
+        },
+        {
+          "to": "gram.verb.separable",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.einerseits_andererseits",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Einerseits ..., andererseits ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Einerseits {CLAUSE:v2}, andererseits {CLAUSE:v2}.",
+        "function": "Vor- und Nachteile abwägen",
+        "slots": {
+          "CLAUSE": {
+            "order": "V2"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.conj.adverbs",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.an_deiner_stelle",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "An deiner Stelle würde ich ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "An deiner Stelle würde ich {VERB:inf}.",
+        "function": "einen Rat geben",
+        "slots": {
+          "VERB": {
+            "form": "Inf"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.konj2.ratschlag",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.ich_haette_nicht_gedacht",
+      "kind": "pattern",
+      "level": "B1",
+      "title": "Ich hätte nicht gedacht, dass ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Ich hätte nicht gedacht, dass {CLAUSE}.",
+        "function": "Überraschung ausdrücken",
+        "slots": {
+          "CLAUSE": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.konj2.haette_waere",
+          "kind": "uses"
+        },
+        {
+          "to": "gram.sub.dass",
+          "kind": "uses"
+        }
+      ]
+    }
+  ]
+}

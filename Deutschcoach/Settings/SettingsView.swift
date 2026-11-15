@@ -1,8 +1,33 @@
 import AVFAudio
 import SwiftUI
 
-/// The Settings window (⌘,): API key, native language, voice (DESIGN.md §6).
+/// The tabs of the Settings window; the selection is remembered so that the practice screen
+/// can open the Library tab directly.
+enum SettingsTab: String {
+    case general, library
+
+    static let defaultsKey = "settingsTab"
+}
+
+/// The Settings window (⌘,) with the General and Library tabs (DESIGN.md §6).
 struct SettingsView: View {
+    let model: AppModel
+    @AppStorage(SettingsTab.defaultsKey) private var tab = SettingsTab.general
+
+    var body: some View {
+        TabView(selection: $tab) {
+            Tab("General", systemImage: "gearshape", value: SettingsTab.general) {
+                GeneralSettingsView(model: model)
+            }
+            Tab("Library", systemImage: "books.vertical", value: SettingsTab.library) {
+                LibrarySettingsView(model: model)
+            }
+        }
+    }
+}
+
+/// API key, native language, user level, voice.
+private struct GeneralSettingsView: View {
     let model: AppModel
 
     @State private var keyInput = ""
@@ -46,6 +71,20 @@ struct SettingsView: View {
                     }
                 }
                 Text("Changing it discards the current batch and generates a new one.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Level") {
+                Picker("My level", selection: Binding(
+                    get: { model.userLevel },
+                    set: { level in Task { await model.setUserLevel(level) } }
+                )) {
+                    ForEach(CEFRLevel.allCases, id: \.self) { level in
+                        Text(verbatim: level.rawValue).tag(level)
+                    }
+                }
+                Text("Sentences use elements up to this level. The next batch is generated at the new level.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

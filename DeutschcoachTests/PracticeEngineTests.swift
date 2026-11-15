@@ -52,7 +52,7 @@ func generatedResponse(for request: GenerationRequest, database: AppDatabase) th
             }
             words.append([".", "", "PUNCT", ""])
             let de = words.dropLast().map { $0[0] }.joined(separator: " ") + "."
-            return GeneratedSentence(position: sentenceRequest.position, de: de, translation: "译文 \(sentenceRequest.position)",
+            return GeneratedSentence(position: sentenceRequest.position, de: de, translation: request.nativeLang == "en" ? "Translation \(sentenceRequest.position)" : "译文 \(sentenceRequest.position)",
                                      words: words, spans: [], targets: targets)
         }
         return GenerationResponse(sentences: sentences, malformed: [], usage: TokenUsage())

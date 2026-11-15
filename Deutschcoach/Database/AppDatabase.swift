@@ -19,6 +19,9 @@ nonisolated final class AppDatabase: Sendable {
         migrator.registerMigration("v1") { db in
             try db.execute(sql: Schema.v1)
         }
+        migrator.registerMigration("v2") { db in
+            try db.execute(sql: Schema.v2)
+        }
         return migrator
     }
 }

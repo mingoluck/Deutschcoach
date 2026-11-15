@@ -1,0 +1,733 @@
+{
+  "seed": {
+    "id": "core_a2",
+    "title": "Grammatik und Redemittel A2",
+    "version": 1
+  },
+  "elements": [
+    {
+      "key": "gram.dat.verbs",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Verben mit Dativ: helfen, gefallen, gehören, danken",
+      "reviewed": true,
+      "grammar": {
+        "category": "case",
+        "annotation_labels": [
+          "Dat",
+          "ObjDat"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.dat.indirect_obj",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.pron.personal_dat",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Personalpronomen im Dativ: mir, dir, ihm, ihr, uns",
+      "reviewed": true,
+      "grammar": {
+        "category": "pronoun",
+        "annotation_labels": [
+          "PRON",
+          "Dat"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.dat.indirect_obj",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.prep.wechsel_wo",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Wechselpräpositionen mit Dativ auf die Frage Wo? (in, auf, an, unter, neben …)",
+      "reviewed": true,
+      "grammar": {
+        "category": "preposition",
+        "annotation_labels": [
+          "ADP",
+          "Dat",
+          "AdvL"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.prep.dat",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.prep.wechsel_wohin",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Wechselpräpositionen mit Akkusativ auf die Frage Wohin?",
+      "reviewed": true,
+      "grammar": {
+        "category": "preposition",
+        "annotation_labels": [
+          "ADP",
+          "Acc",
+          "AdvL"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.prep.acc",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.prep.wechsel_wo",
+          "kind": "related"
+        }
+      ]
+    },
+    {
+      "key": "gram.prep.time_dat",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Temporale Präpositionen mit Dativ: seit, vor, nach (seit zwei Jahren)",
+      "reviewed": true,
+      "grammar": {
+        "category": "preposition",
+        "annotation_labels": [
+          "ADP",
+          "Dat",
+          "AdvT"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.prep.dat",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.verb.reflexive",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Reflexive Verben (sich freuen, sich waschen)",
+      "reviewed": true,
+      "grammar": {
+        "category": "verb",
+        "annotation_labels": [
+          "PRON",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.pron.personal_acc",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.verb.prep",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Verben mit Präposition (warten auf, sich freuen über, denken an)",
+      "reviewed": true,
+      "grammar": {
+        "category": "verb",
+        "annotation_labels": [
+          "ObjPrep"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.prep.acc",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.tense.praeteritum_modal",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Präteritum der Modalverben: konnte, musste, wollte, durfte",
+      "reviewed": true,
+      "grammar": {
+        "category": "tense",
+        "annotation_labels": [
+          "AUX",
+          "Fin",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.modal.inf",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.tense.perfekt_separable",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Perfekt trennbarer Verben (angefangen, eingekauft)",
+      "reviewed": true,
+      "grammar": {
+        "category": "tense",
+        "annotation_labels": [
+          "AUX",
+          "Part2",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.tense.perfekt_haben",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.verb.separable",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.tense.perfekt_inseparable",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Perfekt ohne ge-: untrennbare Verben und Verben auf -ieren (verkauft, telefoniert)",
+      "reviewed": true,
+      "grammar": {
+        "category": "tense",
+        "annotation_labels": [
+          "AUX",
+          "Part2",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.tense.perfekt_haben",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.adj.decl_definite",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Adjektivdeklination nach bestimmtem Artikel (der neue Tisch)",
+      "reviewed": true,
+      "grammar": {
+        "category": "adjective",
+        "annotation_labels": [
+          "ADJ",
+          "DET"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.adj.predicative",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.adj.decl_indefinite",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Adjektivdeklination nach unbestimmtem Artikel (ein neuer Tisch)",
+      "reviewed": true,
+      "grammar": {
+        "category": "adjective",
+        "annotation_labels": [
+          "ADJ",
+          "DET"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.adj.predicative",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.art.indefinite",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.adj.comparative",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Komparativ mit als (größer als)",
+      "reviewed": true,
+      "grammar": {
+        "category": "adjective",
+        "annotation_labels": [
+          "ADJ"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.adj.predicative",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.adj.superlative",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Superlativ (am größten, der größte)",
+      "reviewed": true,
+      "grammar": {
+        "category": "adjective",
+        "annotation_labels": [
+          "ADJ"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.adj.comparative",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.adj.so_wie",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Vergleich mit so … wie",
+      "reviewed": true,
+      "grammar": {
+        "category": "adjective",
+        "annotation_labels": [
+          "ADJ"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.adj.predicative",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.adj.comparative",
+          "kind": "related"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.weil",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Nebensatz mit weil (Verb am Ende)",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.wo.v2",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.dass",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Nebensatz mit dass",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.weil",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.sub.wenn",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Nebensatz mit wenn (Bedingung oder Zeit)",
+      "reviewed": true,
+      "grammar": {
+        "category": "subordinate_clause",
+        "annotation_labels": [
+          "SCONJ",
+          "Sub"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.sub.weil",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.conj.denn",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Begründung mit denn (Hauptsatz)",
+      "reviewed": true,
+      "grammar": {
+        "category": "connector",
+        "annotation_labels": [
+          "CCONJ"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.conj.und_oder_aber",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.sub.weil",
+          "kind": "related"
+        }
+      ]
+    },
+    {
+      "key": "gram.konj2.wuerde",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Konjunktiv II: würde + Infinitiv",
+      "reviewed": true,
+      "grammar": {
+        "category": "mood",
+        "annotation_labels": [
+          "AUX",
+          "Inf",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.modal.inf",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.konj2.koennte",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Höfliche Bitte mit könnte (Könnten Sie …?)",
+      "reviewed": true,
+      "grammar": {
+        "category": "mood",
+        "annotation_labels": [
+          "AUX",
+          "Inf",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.modal.inf",
+          "kind": "prerequisite"
+        },
+        {
+          "to": "gram.konj2.wuerde",
+          "kind": "related"
+        }
+      ]
+    },
+    {
+      "key": "gram.gen.names",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Genitiv bei Namen (Peters Auto)",
+      "reviewed": true,
+      "grammar": {
+        "category": "case",
+        "annotation_labels": [
+          "Gen",
+          "Attr"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.nom.subject",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.imp.ihr",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Imperativ in der ihr-Form (Kommt bitte!)",
+      "reviewed": true,
+      "grammar": {
+        "category": "verb",
+        "annotation_labels": [
+          "Fin",
+          "Pred"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.imp.du",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "gram.pron.indef",
+      "kind": "grammar",
+      "level": "A2",
+      "title": "Indefinitpronomen: man, jemand, niemand, etwas, nichts",
+      "reviewed": true,
+      "grammar": {
+        "category": "pronoun",
+        "annotation_labels": [
+          "PRON"
+        ]
+      },
+      "links": [
+        {
+          "to": "gram.nom.subject",
+          "kind": "prerequisite"
+        }
+      ]
+    },
+    {
+      "key": "pat.ich_wuerde_gern",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Ich würde gern ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Ich würde gern {VERB:inf}.",
+        "function": "einen Wunsch äußern",
+        "slots": {
+          "VERB": {
+            "form": "Inf"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.konj2.wuerde",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.koennten_sie_bitte",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Könnten Sie bitte ...?",
+      "reviewed": true,
+      "pattern": {
+        "template": "Könnten Sie bitte {VERB:inf}?",
+        "function": "höflich bitten",
+        "slots": {
+          "VERB": {
+            "form": "Inf"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.konj2.koennte",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.ich_habe_lust",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Ich habe Lust auf ... / ..., zu ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Ich habe Lust auf {NOUN:acc}.",
+        "function": "Lust ausdrücken",
+        "slots": {
+          "NOUN": {
+            "case": "Acc"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.verb.prep",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.mir_gefaellt",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "... gefällt mir.",
+      "reviewed": true,
+      "pattern": {
+        "template": "{NOUN:nom} gefällt mir.",
+        "function": "sagen, was einem gefällt",
+        "slots": {
+          "NOUN": {
+            "case": "Nom"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.dat.verbs",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.es_tut_mir_leid",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Es tut mir leid, dass ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Es tut mir leid, dass {CLAUSE}.",
+        "function": "sich entschuldigen",
+        "slots": {
+          "CLAUSE": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.sub.dass",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.ich_freue_mich_auf",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Ich freue mich auf ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Ich freue mich auf {NOUN:acc}.",
+        "function": "Vorfreude ausdrücken",
+        "slots": {
+          "NOUN": {
+            "case": "Acc"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.verb.reflexive",
+          "kind": "uses"
+        },
+        {
+          "to": "gram.verb.prep",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.wie_waere_es_mit",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Wie wäre es mit ...?",
+      "reviewed": true,
+      "pattern": {
+        "template": "Wie wäre es mit {NOUN:dat}?",
+        "function": "etwas vorschlagen",
+        "slots": {
+          "NOUN": {
+            "case": "Dat"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.prep.dat",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.ich_glaube_dass",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Ich glaube, dass ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Ich glaube, dass {CLAUSE}.",
+        "function": "eine Vermutung äußern",
+        "slots": {
+          "CLAUSE": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.sub.dass",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.hast_du_zeit",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Hast du Zeit? Wollen wir ... ?",
+      "reviewed": true,
+      "pattern": {
+        "template": "Hast du am {NOUN:dat} Zeit?",
+        "function": "eine Verabredung vorschlagen",
+        "slots": {
+          "NOUN": {
+            "case": "Dat"
+          }
+        }
+      },
+      "links": [
+        {
+          "to": "gram.q.ja_nein",
+          "kind": "uses"
+        }
+      ]
+    },
+    {
+      "key": "pat.ich_war_schon",
+      "kind": "pattern",
+      "level": "A2",
+      "title": "Ich war schon (ein)mal in ...",
+      "reviewed": true,
+      "pattern": {
+        "template": "Ich war schon einmal in {PROPN}.",
+        "function": "über Erfahrungen sprechen",
+        "slots": {
+          "PROPN": {}
+        }
+      },
+      "links": [
+        {
+          "to": "gram.tense.praeteritum_sein_haben",
+          "kind": "uses"
+        }
+      ]
+    }
+  ]
+}

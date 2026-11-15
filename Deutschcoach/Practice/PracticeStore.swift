@@ -63,13 +63,18 @@ nonisolated struct PracticeStore: Sendable {
         }
     }
 
-    /// Deletes unfinished batches in another language (generated before a language change).
-    func discardBatches(notIn language: String) async throws {
+    /// §3.2 level change: deletes the `generating` and `ready` batches; the `active` one stays.
+    func discardPendingBatches() async throws {
         try await database.writer.write { db in
-            let deleted = try Batch
-                .filter(["generating", "ready", "active"].contains(Column("status")) && Column("native_lang") != language)
-                .deleteAll(db)
-            if deleted > 0 { logger.info("Discarded \(deleted) batch(es) not in \(language, privacy: .public)") }
+            let deleted = try Batch.filter(["generating", "ready"].contains(Column("status"))).deleteAll(db)
+            if deleted > 0 { logger.info("Discarded \(deleted) pending batch(es)") }
+        }
+    }
+
+    /// Deletes a batch produced by a stale generation, unless it is already being practiced.
+    func discardReadyBatch(_ id: Int64) async throws {
+        try await database.writer.write { db in
+            try db.execute(sql: "DELETE FROM batch WHERE id = ? AND status IN ('generating', 'ready')", arguments: [id])
         }
     }
 

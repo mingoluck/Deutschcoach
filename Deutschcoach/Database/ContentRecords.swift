@@ -30,6 +30,7 @@ nonisolated struct Element: Codable, Sendable, Hashable, FetchableRecord, Mutabl
     var status: ElementStatus
     var levelSrc: String?
     var reviewed: Bool
+    var targetable: Bool
 
     mutating func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
@@ -99,4 +100,19 @@ nonisolated struct WordForm: Codable, Sendable, Hashable, FetchableRecord, Persi
     var form: String
     var elementId: Int64
     var morph: String?
+}
+
+/// One seed file that was imported (DESIGN.md §2.5).
+nonisolated struct SeedImport: Codable, Sendable, Hashable, FetchableRecord, PersistableRecord, Identifiable {
+    static let databaseTableName = "seed_import"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+
+    var seedId: String
+    var title: String
+    var version: Int
+    var elementCount: Int
+    var importedAt: Int64
+
+    var id: String { seedId }
 }

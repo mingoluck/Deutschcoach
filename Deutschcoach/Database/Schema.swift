@@ -113,4 +113,17 @@ CREATE TABLE sentence_element (
   PRIMARY KEY (sentence_id, element_id)
 );
 """
+
+    /// M7 (DESIGN.md §2.2, §2.5): non-targetable elements and the record of imported seed files.
+    static let v2 = """
+ALTER TABLE element ADD COLUMN targetable INTEGER NOT NULL DEFAULT 1;
+
+CREATE TABLE seed_import (
+  seed_id       TEXT PRIMARY KEY,
+  title         TEXT NOT NULL,
+  version       INTEGER NOT NULL,
+  element_count INTEGER NOT NULL,
+  imported_at   INTEGER NOT NULL
+);
+"""
 }

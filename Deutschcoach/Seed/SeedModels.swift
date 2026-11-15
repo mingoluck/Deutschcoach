@@ -1,8 +1,9 @@
 import Foundation
 
-// The seed file format (content layer only, DESIGN.md §2.1).
+// The seed file format (content layer only, DESIGN.md §2.5).
 //
 // {
+//   "seed": { "id": "goethe_a1", "title": "Goethe A1 Wortschatz", "version": 1 },
 //   "elements": [
 //     { "key": "vocab.kind.noun", "kind": "vocab", "level": "A1", "title": "das Kind",
 //       "freq_rank": 120,
@@ -12,12 +13,22 @@ import Foundation
 //   ]
 // }
 //
+// The "seed" header is required for import (the import preview reports a missing one).
 // Optional fields: freq_rank, status (default "active"), level_src (default "import"),
-// reviewed (default false), forms, links, and the optional fields of each detail.
+// reviewed (default false), targetable (default true), forms, links, and the optional fields
+// of each detail.
 // Exactly one of vocab / grammar / pattern must be present, matching `kind`.
 
 nonisolated struct SeedFile: Decodable, Sendable {
+    /// Decoded as optional so that a missing header is reported as such, not as a decoding error.
+    var seed: SeedHeader?
     var elements: [SeedElement]
+}
+
+nonisolated struct SeedHeader: Codable, Sendable, Equatable {
+    var id: String
+    var title: String
+    var version: Int
 }
 
 nonisolated struct SeedElement: Decodable, Sendable {
@@ -29,6 +40,7 @@ nonisolated struct SeedElement: Decodable, Sendable {
     var status: ElementStatus?
     var levelSrc: String?
     var reviewed: Bool?
+    var targetable: Bool?
     var vocab: SeedVocab?
     var grammar: SeedGrammar?
     var pattern: SeedPattern?
@@ -37,7 +49,7 @@ nonisolated struct SeedElement: Decodable, Sendable {
     var links: [SeedLink]?
 
     enum CodingKeys: String, CodingKey {
-        case key, kind, level, title, status, reviewed, vocab, grammar, pattern, forms, links
+        case key, kind, level, title, status, reviewed, targetable, vocab, grammar, pattern, forms, links
         case freqRank = "freq_rank"
         case levelSrc = "level_src"
     }

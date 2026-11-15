@@ -4,14 +4,14 @@ import Testing
 @testable import Deutschcoach
 
 struct MigrationTests {
-    @Test func v1CreatesAllTablesAndIndexes() async throws {
+    @Test func migrationsCreateAllTablesAndIndexes() async throws {
         let database = try AppDatabase.inMemory()
         let names = try await database.writer.read { db in
             try String.fetchSet(db, sql: "SELECT name FROM sqlite_master WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'grdb_%'")
         }
         let expected: Set = [
             "element", "vocab_detail", "grammar_detail", "pattern_detail", "element_link", "word_form",
-            "mastery", "practice_event", "batch", "sentence", "sentence_element",
+            "mastery", "practice_event", "batch", "sentence", "sentence_element", "seed_import",
             "idx_element", "idx_lemma",
         ]
         #expect(names == expected)
@@ -30,14 +30,15 @@ struct MigrationTests {
         _ = try AppDatabase(queue)
         _ = try AppDatabase(queue)
         let applied = try queue.read { db in try AppDatabase.migrator.appliedMigrations(db) }
-        #expect(applied == ["v1"])
+        #expect(applied == ["v1", "v2"])
     }
 }
 
 struct SeedImportTests {
     private func makeSeed(title: String = "das Kind") throws -> SeedFile {
         let json = """
-        { "elements": [
+        { "seed": { "id": "test", "title": "Test", "version": 1 },
+          "elements": [
           { "key": "vocab.kind.noun", "kind": "vocab", "level": "A1", "title": "\(title)",
             "vocab": { "lemma": "Kind", "pos": "NOUN", "gender": "Neut", "plural": "Kinder" },
             "forms": [ { "form": "Kindern", "morph": "Dat|Plur" } ],
@@ -138,17 +139,20 @@ struct SeedImportTests {
     }
 
     @Test func rejectsInvalidSeeds() throws {
+        func issues(_ seed: SeedFile) -> [SeedImporter.SeedError] {
+            SeedImporter.validate([SeedImporter.Source(name: "a.json", file: seed)], existingKeys: [])
+        }
         var seed = try makeSeed()
         seed.elements.append(seed.elements[0])
-        #expect(throws: SeedImporter.SeedError.duplicateKey("vocab.kind.noun")) {
-            try SeedImporter.validate(seed)
-        }
+        #expect(issues(seed) == [.duplicateKey("vocab.kind.noun")])
 
         seed = try makeSeed()
         seed.elements[0].kind = .grammar
-        #expect(throws: SeedImporter.SeedError.detailMismatch(key: "vocab.kind.noun")) {
-            try SeedImporter.validate(seed)
-        }
+        #expect(issues(seed) == [.detailMismatch(key: "vocab.kind.noun")])
+
+        seed = try makeSeed()
+        seed.seed = nil
+        #expect(issues(seed) == [.missingHeader(file: "a.json")])
     }
 
     @Test func rejectsUnknownLinkTargets() async throws {
@@ -162,9 +166,9 @@ struct SeedImportTests {
         #expect(try await database.contentSummary().totalElements == 0)
     }
 
-    @Test func bundledSeedImportsTwiceIdentically() async throws {
+    @Test func fixtureSeedImportsTwiceIdentically() async throws {
         let database = try AppDatabase.inMemory()
-        let seed = try SeedImporter.loadBundledSeed()
+        let seed = try loadFixtureSeed()
         let first = try await SeedImporter.importSeed(seed, into: database)
         let summary = try await database.contentSummary()
         let second = try await SeedImporter.importSeed(seed, into: database)

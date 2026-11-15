@@ -3,10 +3,18 @@ import GRDB
 import Synchronization
 @testable import Deutschcoach
 
-/// An in-memory database with the bundled A1 seed imported.
+/// The test fixture seed (`Fixtures/seed_fixture.json`): a few dozen A1 elements.
+func loadFixtureSeed() throws -> SeedFile {
+    guard let url = Bundle(for: FixtureBundle.self).url(forResource: "seed_fixture", withExtension: "json") else {
+        throw CocoaError(.fileNoSuchFile)
+    }
+    return try SeedImporter.decode(Data(contentsOf: url))
+}
+
+/// An in-memory database with the fixture seed imported.
 func makeSeededDatabase() async throws -> AppDatabase {
     let database = try AppDatabase.inMemory()
-    try await SeedImporter.importSeed(try SeedImporter.loadBundledSeed(), into: database)
+    try await SeedImporter.importSeed(try loadFixtureSeed(), into: database)
     return database
 }
 

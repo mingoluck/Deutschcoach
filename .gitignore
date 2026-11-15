@@ -10,3 +10,6 @@ build/
 
 # macOS
 .DS_Store
+
+# Local tooling (the seed builder and its sources); not part of the project
+tools/

@@ -72,7 +72,7 @@ nonisolated struct BatchGenerator: Sendable {
     private func fill(batchId: Int64, request: GenerationRequest, onEvent: @Sendable (Event) -> Void) async throws -> Report {
         let vocabIds = request.sentences.flatMap(\.targets).filter { $0.kind == .vocab }.map(\.elementId)
         let lexicon = try await database.writer.read { db in try VocabLexicon.load(elementIds: vocabIds, from: db) }
-        let validator = SentenceValidator(lexicon: lexicon)
+        let validator = SentenceValidator(lexicon: lexicon, nativeLang: request.nativeLang)
 
         var pending = request.sentences
         var accepted: [Int: ValidatedSentence] = [:]

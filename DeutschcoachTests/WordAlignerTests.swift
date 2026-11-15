@@ -24,6 +24,22 @@ struct WordAlignerNormalizationTests {
     }
 }
 
+struct WordAlignerClockTimeTests {
+    @Test func clockTimesInDigitsMatchSpokenWords() {
+        // The recognizer writes "8:00" for spoken "acht Uhr".
+        #expect(WordAligner.align(sentence: "Wir essen um acht Uhr.", heard: "Wir essen um 8:00").allMatched)
+        #expect(WordAligner.align(sentence: "Wir essen um acht Uhr.", heard: "wir essen um 8:00 Uhr").allMatched)
+        #expect(WordAligner.align(sentence: "Der Zug kommt um acht Uhr fünfzehn.", heard: "der Zug kommt um 8.15").allMatched)
+        #expect(WordAligner.words(in: "um 20:30.") == ["um", "zwanzig", "uhr", "dreissig"])
+    }
+
+    @Test func otherNumbersAreUnchanged() {
+        #expect(WordAligner.expandClockTime("8") == nil)
+        #expect(WordAligner.expandClockTime("3.500") == nil)
+        #expect(WordAligner.expandClockTime("25:00") == nil)
+    }
+}
+
 struct WordAlignerAlignmentTests {
     let sentence = "Ich gebe den Kindern einen Apfel."
 

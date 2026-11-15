@@ -42,7 +42,34 @@ nonisolated enum WordAligner {
 
     /// Splits free text (a transcription) into normalized words.
     static func words(in text: String) -> [String] {
-        text.split(whereSeparator: \.isWhitespace).map { normalize(String($0)) }.filter { !$0.isEmpty }
+        heardTokens(text).map(\.key)
+    }
+
+    /// The recognizer writes clock times in digits ("8:00", "8.15 Uhr") although the learner
+    /// says them in words: "8:00" → "acht" "uhr", "8:15" → "acht" "uhr" "fünfzehn".
+    static func expandClockTime(_ token: String) -> [String]? {
+        let core = token.trimmingCharacters(in: .punctuationCharacters.subtracting(CharacterSet(charactersIn: ":.")))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        guard let match = core.wholeMatch(of: /(\d{1,2})[:.](\d{2})/),
+              let hour = Int(match.1), let minute = Int(match.2), hour <= 24, minute < 60
+        else { return nil }
+        return [spellOut(hour), "uhr"] + (minute == 0 ? [] : [spellOut(minute)])
+    }
+
+    /// Heard tokens with their original spelling (for display) and normalized key.
+    private static func heardTokens(_ text: String) -> [(text: String, key: String)] {
+        var result: [(text: String, key: String)] = []
+        for raw in text.split(whereSeparator: \.isWhitespace).map(String.init) {
+            if let expanded = expandClockTime(raw) {
+                // A following "Uhr" ("8:00 Uhr") is already part of the expansion.
+                result += expanded.map { (text: raw, key: $0) }
+                continue
+            }
+            let key = normalize(raw)
+            if key == "uhr", let previous = result.last, expandClockTime(previous.text) != nil { continue }
+            if !key.isEmpty { result.append((raw, key)) }
+        }
+        return result
     }
 
     // MARK: - Alignment
@@ -55,9 +82,7 @@ nonisolated enum WordAligner {
             return key.isEmpty ? nil : (index, token, key)
         }
         // Keep the heard words' original spelling for display.
-        let heardTokens = heard.split(whereSeparator: \.isWhitespace).map(String.init)
-            .map { (text: $0, key: normalize($0)) }
-            .filter { !$0.key.isEmpty }
+        let heardTokens = heardTokens(heard)
 
         let n = target.count, m = heardTokens.count
         // cost[i][j] = edit distance between target[i...] and heard[j...]

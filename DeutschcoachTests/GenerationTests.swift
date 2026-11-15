@@ -224,3 +224,30 @@ struct BatchGeneratorTests {
         #expect(try await counts(database) == (0, 0, 0))
     }
 }
+
+struct TranslationLanguageTests {
+    @Test func translationMustBeInTheNativeLanguage() {
+        #expect(SentenceValidator.isWritten("我给孩子们一个苹果。", in: "zh"))
+        #expect(!SentenceValidator.isWritten("He said he had to go.", in: "zh"))
+        #expect(SentenceValidator.isWritten("He said he had to go.", in: "en"))
+        #expect(!SentenceValidator.isWritten("他说他得走了。", in: "en"))
+    }
+
+    @Test func wrongLanguageIsRejected() async throws {
+        let database = try await makeSeededDatabase()
+        let ids = try await TemplateIds(database)
+        let lexicon = try await database.writer.read { db in
+            try VocabLexicon.load(elementIds: [ids.geben, ids.kind], from: db)
+        }
+        var sentence = ids.sentence(position: 1)
+        sentence.translation = "I give the children an apple."
+        let request = ids.request(positions: 1...1).sentences[0]
+        let result = SentenceValidator(lexicon: lexicon, nativeLang: "zh").validate(sentence, for: request)
+        guard case .failure(let failure) = result else {
+            Issue.record("an English translation was accepted for zh")
+            return
+        }
+        #expect(failure.reason.contains("not written in zh"))
+        #expect(throws: Never.self) { try SentenceValidator(lexicon: lexicon, nativeLang: "en").validate(sentence, for: request).get() }
+    }
+}

@@ -1,4 +1,5 @@
 {
+  "seed": { "id": "test_fixture", "title": "Test fixture (A1)", "version": 1 },
   "elements": [
     { "key": "vocab.kind.noun", "kind": "vocab", "level": "A1", "title": "das Kind",
       "vocab": { "lemma": "Kind", "pos": "NOUN", "gender": "Neut", "plural": "Kinder" },
