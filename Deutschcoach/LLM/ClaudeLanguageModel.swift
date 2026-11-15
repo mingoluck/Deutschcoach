@@ -11,10 +11,10 @@ nonisolated struct ClaudeLanguageModel: LanguageModel {
     var model = defaultModel
     /// Thinking depth. `claude-haiku-5-5` defaults to `medium`; set explicitly.
     var effort = "medium"
-    /// Includes thinking tokens, which are most of the output. Measured for 10 sentences:
-    /// 12.4K–17.8K output tokens (tool input only ~2–3K), 48–68 s; 16K truncated batches.
-    /// Non-streaming; `ClaudeClient.timeout` leaves room for the slowest case.
-    var maxTokens = 32_000
+    /// Includes thinking tokens, which are most of the output and vary widely. Measured for
+    /// 10 sentences: 12.4K–19.4K output tokens (tool input only ~2–3K), 48–72 s; one batch of
+    /// B1 elements hit 32K. Streamed (DESIGN.md §4.1), so the long tail needs no HTTP timeout.
+    var maxTokens = 64_000
     /// The judge's task is small and the user waits for it (§3.4): low effort, no thinking.
     var judgeEffort = "low"
     var judgeThinking = false
@@ -25,7 +25,7 @@ nonisolated struct ClaudeLanguageModel: LanguageModel {
     func generateSentences(_ request: GenerationRequest) async throws -> GenerationResponse {
         let body = try requestBody(for: request)
         let started = ContinuousClock.now
-        let data = try await client.send(body)
+        let data = try await client.sendStreaming(body)
         logger.info("Response after \((ContinuousClock.now - started).description, privacy: .public): \(Self.summary(of: data), privacy: .public)")
         let response: GenerationResponse
         do {
@@ -48,6 +48,8 @@ nonisolated struct ClaudeLanguageModel: LanguageModel {
         let body: [String: Any] = [
             "model": model,
             "max_tokens": maxTokens,
+            // DESIGN.md §4.1, Transport. No `eager_input_streaming`: the server keeps validating the strict tool input.
+            "stream": true,
             // Cached prefix: tools + system (render order tools → system → messages).
             "system": [
                 ["type": "text", "text": GenerationPrompt.system, "cache_control": ["type": "ephemeral"]],

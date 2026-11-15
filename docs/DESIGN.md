@@ -24,7 +24,7 @@ A macOS app that coaches you in speaking German:
 | Platform | macOS |
 | UI | SwiftUI (native) |
 | Database | SQLite via GRDB (Swift Package) |
-| LLM | Claude API, using tool use with a strict schema (`strict: true`) so tool input always follows the JSON Schema. Start with the Haiku-class model (`claude-haiku-5-5`, effort `medium`); decide finally based on measured quality and cost |
+| LLM | Claude API, using tool use with a strict schema (`strict: true`) so tool input always follows the JSON Schema. Start with the Haiku-class model (`claude-haiku-5-5`, effort `medium`); decide finally based on measured quality and cost. Batch generation streams the response (SSE) with `max_tokens` 64K, because thinking length varies widely (measured 19K to over 32K output tokens for 10 sentences); the judge and translation calls are small and stay non-streaming |
 | Speech synthesis | `AVSpeechSynthesizer` reads aloud live, using the system's enhanced/premium German voices. **No audio files are stored** |
 | Speech recognition | `SpeechAnalyzer` + `SpeechTranscriber` (de-DE, on-device). The recognizer is abstracted behind a protocol so other engines can be plugged in later |
 | Recording | `AVAudioEngine` |
@@ -373,6 +373,13 @@ Details (settled for M5):
 ### 4.1 Generating a Batch of Sentences
 
 Fixed rules, the label set, and the output format go in the system prompt (using prompt caching); each call sends only the request below. The answer comes back as a call to the `submit_sentences` tool with `strict: true`. `tool_choice` stays `auto` (forcing a named tool makes the model skip thinking, which annotation quality needs); the system prompt requires the call, and a response without it counts as a failed generation and is retried.
+
+**Transport**: the generation request sets `"stream": true`; the client reassembles the server-sent events into the same message a non-streaming call returns, then parses it as usual.
+- `eager_input_streaming` stays off, so the server still validates the tool input against the strict schema before sending it.
+- The timeout is an idle timeout of 60 s (the server's `ping` events keep a slow response alive).
+- An `error` event in the middle of the stream is handled like the matching HTTP error, including the automatic retries for rate limits and overload (§1).
+- A stream that ends before `message_stop` is a network error; a partial message is never parsed.
+- With `stop_reason: "max_tokens"` the tool input is incomplete and the generation fails as truncated.
 
 **Request** (built locally; each sentence's targets and mode are already decided):
 

@@ -20,9 +20,9 @@ struct LiveGenerationTests {
     }
 
     static let variants = [
-        Variant(effort: "medium", sentences: 10, maxTokens: 32_000),
-        Variant(effort: "low", sentences: 10, maxTokens: 32_000),
-        Variant(effort: "medium", sentences: 5, maxTokens: 32_000),
+        Variant(effort: "medium", sentences: 10, maxTokens: 64_000),
+        Variant(effort: "low", sentences: 10, maxTokens: 64_000),
+        Variant(effort: "medium", sentences: 5, maxTokens: 64_000),
     ]
 
     @Test(.timeLimit(.minutes(5)), arguments: variants)
@@ -37,7 +37,7 @@ struct LiveGenerationTests {
         model.maxTokens = variant.maxTokens
 
         let started = ContinuousClock.now
-        let data = try await model.client.send(try model.requestBody(for: request))
+        let data = try await model.client.sendStreaming(try model.requestBody(for: request))
         let elapsed = ContinuousClock.now - started
         let summary = ClaudeLanguageModel.summary(of: data)
 
