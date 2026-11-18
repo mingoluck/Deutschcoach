@@ -88,6 +88,17 @@ struct AnswerMatcherTests {
         #expect(score(de, spoken: spoken, "Wir fahren um elf Uhr ab").outcome == .fail)
     }
 
+    @Test func currencyAndUnitSymbolsAreWords() {
+        let de = "Das kostet 20 Euro."
+        let spoken = "Das kostet zwanzig Euro."
+        #expect(score(de, spoken: spoken, "Das kostet 20 €.").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Das kostet 20€").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Das kostet zwanzig Euro").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Das kostet 20 $").outcome == .fail)
+        #expect(score("Es sind 30 Prozent.", spoken: "Es sind dreißig Prozent.", "Es sind 30 %").outcome == .pass)
+        #expect(score("Heute sind es 25 Grad.", spoken: "Heute sind es fünfundzwanzig Grad.", "Heute sind es 25°").outcome == .pass)
+    }
+
     @Test func clockTimesAndDecimals() {
         let time = "Das Spiel beginnt um 15.30 Uhr."
         let timeSpoken = "Das Spiel beginnt um fünfzehn Uhr dreißig."

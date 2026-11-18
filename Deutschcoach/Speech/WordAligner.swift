@@ -56,10 +56,24 @@ nonisolated enum WordAligner {
         return [spellOut(hour), "uhr"] + (minute == 0 ? [] : [spellOut(minute)])
     }
 
+    /// Symbols the recognizer writes for words the learner says (`20 €` for "zwanzig Euro").
+    /// They become separate words before tokenizing, on both sides of a comparison.
+    static let symbolWords: [(symbol: String, word: String)] = [
+        ("€", "Euro"), ("$", "Dollar"), ("£", "Pfund"), ("%", "Prozent"), ("°", "Grad"), ("&", "und"),
+    ]
+
+    private static func expandSymbols(_ text: String) -> String {
+        var text = text
+        for (symbol, word) in symbolWords where text.contains(symbol) {
+            text = text.replacingOccurrences(of: symbol, with: " \(word) ")
+        }
+        return text
+    }
+
     /// Heard tokens with their original spelling (for display) and normalized key.
     private static func heardTokens(_ text: String) -> [(text: String, key: String)] {
         var result: [(text: String, key: String)] = []
-        for raw in text.split(whereSeparator: \.isWhitespace).map(String.init) {
+        for raw in expandSymbols(text).split(whereSeparator: \.isWhitespace).map(String.init) {
             if let expanded = expandClockTime(raw) {
                 // A following "Uhr" ("8:00 Uhr") is already part of the expansion.
                 result += expanded.map { (text: raw, key: $0) }
