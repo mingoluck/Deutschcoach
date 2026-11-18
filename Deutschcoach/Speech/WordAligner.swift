@@ -35,9 +35,32 @@ nonisolated enum WordAligner {
         let lowered = token.lowercased(with: german).replacingOccurrences(of: "ß", with: "ss")
         let kept = String(lowered.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
         if !kept.isEmpty, kept.allSatisfy(\.isASCIIDigit), let number = Int(kept) {
-            return spellOut(number)
+            // A lone 1 stands for any form of "ein" (1 km = einen Kilometer); see `matches`.
+            return number == 1 && kept == "1" ? digitOne : spellOut(number)
         }
-        return kept
+        return unitWords[kept] ?? kept
+    }
+
+    /// Key of the digit 1 written by the recognizer. It is not a German word, and normalizing it
+    /// again leaves it unchanged.
+    static let digitOne = "einziffer"
+    /// The forms the digit 1 can stand for.
+    private static let einForms: Set = ["ein", "eine", "einen", "einem", "einer", "eines", "eins"]
+
+    /// Unit abbreviations the recognizer writes, and the word said (keys, lower case).
+    /// "Kilogramm" and "Kilo" are the same word for matching.
+    static let unitWords: [String: String] = [
+        "km": "kilometer", "m": "meter", "cm": "zentimeter", "m²": "quadratmeter", "qm": "quadratmeter",
+        "kg": "kilo", "kilogramm": "kilo", "g": "gramm", "l": "liter",
+    ]
+
+    /// Whether a target key and a heard key are the same word. Only the digit 1 is lenient:
+    /// the word "eine" said for "einen" is still a mismatch.
+    static func matches(_ target: String, _ heard: String) -> Bool {
+        if target == heard { return true }
+        if heard == digitOne { return einForms.contains(target) }
+        if target == digitOne { return einForms.contains(heard) }
+        return false
     }
 
     /// Splits free text (a transcription) into normalized words.
@@ -63,7 +86,10 @@ nonisolated enum WordAligner {
     ]
 
     private static func expandSymbols(_ text: String) -> String {
-        var text = text
+        // Prices: "2,80 €" / "2,80 Euro" are said "zwei Euro achtzig"; "5,00 €" is "fünf Euro".
+        var text = text.replacing(/(\d+),(\d{2})\s*(€|Euro\b)/) { match in
+            match.2 == "00" ? "\(match.1) Euro" : "\(match.1) Euro \(match.2)"
+        }
         for (symbol, word) in symbolWords where text.contains(symbol) {
             text = text.replacingOccurrences(of: symbol, with: " \(word) ")
         }
@@ -105,7 +131,7 @@ nonisolated enum WordAligner {
             for j in stride(from: m, through: 0, by: -1) {
                 if i == n { cost[i][j] = m - j; continue }
                 if j == m { cost[i][j] = n - i; continue }
-                let same = target[i].key == heardTokens[j].key
+                let same = matches(target[i].key, heardTokens[j].key)
                 cost[i][j] = min(
                     cost[i + 1][j + 1] + (same ? 0 : 1),  // match / substitution
                     cost[i + 1][j] + 1,                    // target word missing
@@ -119,7 +145,7 @@ nonisolated enum WordAligner {
         var i = 0, j = 0
         while i < n || j < m {
             if i < n, j < m {
-                let same = target[i].key == heardTokens[j].key
+                let same = matches(target[i].key, heardTokens[j].key)
                 if cost[i][j] == cost[i + 1][j + 1] + (same ? 0 : 1) {
                     let status: Alignment.Status = same ? .match : .substituted(heard: heardTokens[j].text)
                     words.append(.init(index: target[i].index, text: target[i].text, status: status))

@@ -99,6 +99,30 @@ struct AnswerMatcherTests {
         #expect(score("Heute sind es 25 Grad.", spoken: "Heute sind es fünfundzwanzig Grad.", "Heute sind es 25°").outcome == .pass)
     }
 
+    @Test func pricesWithCents() {
+        let de = "Das macht zusammen 2 Euro 80."
+        let spoken = "Das macht zusammen zwei Euro achtzig."
+        #expect(score(de, spoken: spoken, "Das macht zusammen 2,80 €").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Das macht zusammen 2,80 Euro").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Das macht zusammen zwei Euro achtzig").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Das macht zusammen 2,90 €").outcome == .fail)
+        #expect(score("Das kostet 5 Euro.", spoken: "Das kostet fünf Euro.", "Das kostet 5,00 €").outcome == .pass)
+    }
+
+    @Test func unitsAndTheDigitOne() {
+        let de = "Ich schwimme jeden Tag einen Kilometer."
+        #expect(score(de, "Ich schwimme jeden Tag 1 km").outcome == .pass)
+        #expect(score(de, "Ich schwimme jeden Tag einen Kilometer").outcome == .pass)
+        // Only the digit is lenient: a wrong article said as a word still fails.
+        #expect(score(de, "Ich schwimme jeden Tag eine Kilometer").outcome == .fail)
+        #expect(score("Ich brauche ein Kilo Kartoffeln.", "Ich brauche 1 kg Kartoffeln").outcome == .pass)
+        #expect(score("Ich möchte zweihundert Gramm Käse.", "Ich möchte 200 g Käse").outcome == .pass)
+        #expect(score("Ich trinke jeden Tag zwei Liter Wasser.", "Ich trinke jeden Tag 2 l Wasser").outcome == .pass)
+        #expect(score("Der Tisch ist zwei Meter lang.", "Der Tisch ist 2 m lang").outcome == .pass)
+        #expect(score("Ich brauche ein Kilogramm Mehl.", "Ich brauche ein Kilo Mehl").outcome == .pass)
+        #expect(score("Das kostet elf Euro.", "Das kostet 11 Euro").outcome == .pass)
+    }
+
     @Test func clockTimesAndDecimals() {
         let time = "Das Spiel beginnt um 15.30 Uhr."
         let timeSpoken = "Das Spiel beginnt um fünfzehn Uhr dreißig."
