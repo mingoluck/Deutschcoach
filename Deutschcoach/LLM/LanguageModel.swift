@@ -1,139 +1,17 @@
 import Foundation
 
-// The LLM abstraction (AGENTS.md: LLM calls behind a protocol) and the data exchanged for
-// sentence generation (DESIGN.md §4.1), answer judging (§3.4) and translating history (§3.1).
+// The LLM abstraction (AGENTS.md: LLM calls behind a protocol). Version 0.2 makes no LLM calls
+// (DESIGN.md §1); the protocol, the transport client and the error mapping are kept for the
+// LLM features planned later (§8).
 
 nonisolated protocol LanguageModel: Sendable {
-    /// Recorded in `batch.model` and `sentence.model`.
     var modelName: String { get }
 
-    func generateSentences(_ request: GenerationRequest) async throws -> GenerationResponse
-
-    /// Judges a cloze or recall answer that local comparison could not accept (§3.4).
-    func judge(_ request: JudgeRequest) async throws -> JudgeVerdict
-
-    /// Translates stored sentences into another native language (§3.1). Returns id → text.
-    func translate(_ request: TranslationRequest) async throws -> [Int64: String]
-
-    /// Checks that the API key is present and accepted, without using the model (§1).
+    /// Checks that the API key is present and accepted, without using the model.
     func verifyAccess() async throws
 }
 
-// MARK: - Translation (§3.1)
-
-nonisolated struct TranslationRequest: Codable, Sendable, Equatable {
-    struct Item: Codable, Sendable, Equatable {
-        var id: Int64
-        var mode: SentenceMode
-        var de: String
-    }
-
-    var nativeLang: String
-    var sentences: [Item]
-
-    enum CodingKeys: String, CodingKey {
-        case nativeLang = "native_lang"
-        case sentences
-    }
-}
-
-// MARK: - Judge (§3.4)
-
-nonisolated struct JudgeRequest: Codable, Sendable, Equatable {
-    struct Target: Codable, Sendable, Equatable {
-        var elementId: Int64
-        var title: String
-
-        enum CodingKeys: String, CodingKey {
-            case elementId = "element_id"
-            case title
-        }
-    }
-
-    var mode: SentenceMode
-    var translation: String
-    var reference: String
-    var targets: [Target]
-    /// The recognized text.
-    var answer: String
-}
-
-nonisolated struct JudgeVerdict: Codable, Sendable, Equatable {
-    enum Confidence: String, Codable, Sendable {
-        case high, low
-    }
-
-    var valid: Bool
-    var confidence: Confidence
-    var targetsUsed: [Int64]
-
-    enum CodingKeys: String, CodingKey {
-        case valid, confidence
-        case targetsUsed = "targets_used"
-    }
-}
-
-// MARK: - Request (§4.1)
-
-nonisolated struct GenerationRequest: Codable, Sendable, Equatable {
-    var nativeLang: String
-    var userLevel: CEFRLevel
-    var sentences: [SentenceRequest]
-
-    enum CodingKeys: String, CodingKey {
-        case nativeLang = "native_lang"
-        case userLevel = "user_level"
-        case sentences
-    }
-}
-
-nonisolated struct SentenceRequest: Codable, Sendable, Equatable {
-    var position: Int
-    var mode: SentenceMode
-    var targets: [GenerationTarget]
-}
-
-nonisolated struct GenerationTarget: Codable, Sendable, Equatable {
-    var elementId: Int64
-    var kind: ElementKind
-    var title: String
-    /// Disambiguation for polysemous vocabulary; omitted when nil.
-    var sense: String?
-
-    enum CodingKeys: String, CodingKey {
-        case elementId = "element_id"
-        case kind, title, sense
-    }
-}
-
-// MARK: - Response (§4.1)
-
-/// One sentence as returned by the model, before validation. `words` stays raw so that a
-/// malformed row fails validation for that sentence only.
-nonisolated struct GeneratedSentence: Codable, Sendable, Equatable {
-    var position: Int
-    var de: String
-    var translation: String
-    var words: [[String]]
-    var spans: [AnnotationSpan]
-    var targets: [TargetTokens]
-}
-
-nonisolated struct TargetTokens: Codable, Sendable, Equatable {
-    var elementId: Int64
-    var tokens: [Int]
-
-    enum CodingKeys: String, CodingKey {
-        case elementId = "element_id"
-        case tokens
-    }
-}
-
-/// A sentence that could not even be decoded (wrong field types, missing fields).
-nonisolated struct MalformedSentence: Sendable, Equatable {
-    var position: Int?
-    var reason: String
-}
+// MARK: - Usage
 
 nonisolated struct TokenUsage: Sendable, Equatable {
     var input = 0
@@ -149,12 +27,6 @@ nonisolated struct TokenUsage: Sendable, Equatable {
             cacheRead: a.cacheRead + b.cacheRead
         )
     }
-}
-
-nonisolated struct GenerationResponse: Sendable, Equatable {
-    var sentences: [GeneratedSentence]
-    var malformed: [MalformedSentence]
-    var usage: TokenUsage
 }
 
 // MARK: - Errors

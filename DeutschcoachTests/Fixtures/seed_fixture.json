@@ -1,175 +1,654 @@
 {
-  "seed": { "id": "test_fixture", "title": "Test fixture (A1)", "version": 1 },
-  "elements": [
-    { "key": "vocab.kind.noun", "kind": "vocab", "level": "A1", "title": "das Kind",
-      "vocab": { "lemma": "Kind", "pos": "NOUN", "gender": "Neut", "plural": "Kinder" },
-      "forms": [ { "form": "Kindern", "morph": "Dat|Plur" }, { "form": "Kindes", "morph": "Gen" }, { "form": "Kinds", "morph": "Gen" } ] },
-    { "key": "vocab.mann.noun", "kind": "vocab", "level": "A1", "title": "der Mann",
-      "vocab": { "lemma": "Mann", "pos": "NOUN", "gender": "Masc", "plural": "Männer" },
-      "forms": [ { "form": "Männern", "morph": "Dat|Plur" }, { "form": "Mannes", "morph": "Gen" }, { "form": "Manns", "morph": "Gen" } ] },
-    { "key": "vocab.frau.noun", "kind": "vocab", "level": "A1", "title": "die Frau",
-      "vocab": { "lemma": "Frau", "pos": "NOUN", "gender": "Fem", "plural": "Frauen" } },
-    { "key": "vocab.apfel.noun", "kind": "vocab", "level": "A1", "title": "der Apfel",
-      "vocab": { "lemma": "Apfel", "pos": "NOUN", "gender": "Masc", "plural": "Äpfel" },
-      "forms": [ { "form": "Äpfeln", "morph": "Dat|Plur" }, { "form": "Apfels", "morph": "Gen" } ] },
-    { "key": "vocab.buch.noun", "kind": "vocab", "level": "A1", "title": "das Buch",
-      "vocab": { "lemma": "Buch", "pos": "NOUN", "gender": "Neut", "plural": "Bücher" },
-      "forms": [ { "form": "Büchern", "morph": "Dat|Plur" }, { "form": "Buches", "morph": "Gen" }, { "form": "Buchs", "morph": "Gen" } ] },
-    { "key": "vocab.haus.noun", "kind": "vocab", "level": "A1", "title": "das Haus",
-      "vocab": { "lemma": "Haus", "pos": "NOUN", "gender": "Neut", "plural": "Häuser" },
-      "forms": [ { "form": "Häusern", "morph": "Dat|Plur" }, { "form": "Hauses", "morph": "Gen" } ] },
-    { "key": "vocab.tag.noun", "kind": "vocab", "level": "A1", "title": "der Tag",
-      "vocab": { "lemma": "Tag", "pos": "NOUN", "gender": "Masc", "plural": "Tage" },
-      "forms": [ { "form": "Tagen", "morph": "Dat|Plur" }, { "form": "Tages", "morph": "Gen" }, { "form": "Tags", "morph": "Gen" } ] },
-    { "key": "vocab.wasser.noun", "kind": "vocab", "level": "A1", "title": "das Wasser",
-      "vocab": { "lemma": "Wasser", "pos": "NOUN", "gender": "Neut" },
-      "forms": [ { "form": "Wassers", "morph": "Gen" } ] },
-    { "key": "vocab.stadt.noun", "kind": "vocab", "level": "A1", "title": "die Stadt",
-      "vocab": { "lemma": "Stadt", "pos": "NOUN", "gender": "Fem", "plural": "Städte" },
-      "forms": [ { "form": "Städten", "morph": "Dat|Plur" } ] },
-    { "key": "vocab.freund.noun", "kind": "vocab", "level": "A1", "title": "der Freund",
-      "vocab": { "lemma": "Freund", "pos": "NOUN", "gender": "Masc", "plural": "Freunde" },
-      "forms": [ { "form": "Freunden", "morph": "Dat|Plur" }, { "form": "Freundes", "morph": "Gen" } ] },
-
-    { "key": "vocab.sein.aux", "kind": "vocab", "level": "A1", "title": "sein",
-      "vocab": { "lemma": "sein", "pos": "AUX",
-        "verb_forms": {
-          "praesens": { "ich": "bin", "du": "bist", "er": "ist", "wir": "sind", "ihr": "seid", "sie": "sind" },
-          "praeteritum": { "ich": "war", "du": "warst", "er": "war", "wir": "waren", "ihr": "wart", "sie": "waren" },
-          "partizip2": "gewesen", "aux": "sein" } } },
-    { "key": "vocab.haben.verb", "kind": "vocab", "level": "A1", "title": "haben",
-      "vocab": { "lemma": "haben", "pos": "VERB",
-        "verb_forms": {
-          "praesens": { "ich": "habe", "du": "hast", "er": "hat", "wir": "haben", "ihr": "habt", "sie": "haben" },
-          "praeteritum": { "ich": "hatte", "du": "hattest", "er": "hatte", "wir": "hatten", "ihr": "hattet", "sie": "hatten" },
-          "partizip2": "gehabt", "aux": "haben" } } },
-    { "key": "vocab.gehen.verb", "kind": "vocab", "level": "A1", "title": "gehen",
-      "vocab": { "lemma": "gehen", "pos": "VERB",
-        "verb_forms": {
-          "praesens": { "ich": "gehe", "du": "gehst", "er": "geht", "wir": "gehen", "ihr": "geht", "sie": "gehen" },
-          "praeteritum": { "ich": "ging", "du": "gingst", "er": "ging", "wir": "gingen", "ihr": "gingt", "sie": "gingen" },
-          "partizip2": "gegangen", "aux": "sein" } } },
-    { "key": "vocab.kommen.verb", "kind": "vocab", "level": "A1", "title": "kommen",
-      "vocab": { "lemma": "kommen", "pos": "VERB",
-        "verb_forms": {
-          "praesens": { "ich": "komme", "du": "kommst", "er": "kommt", "wir": "kommen", "ihr": "kommt", "sie": "kommen" },
-          "praeteritum": { "ich": "kam", "du": "kamst", "er": "kam", "wir": "kamen", "ihr": "kamt", "sie": "kamen" },
-          "partizip2": "gekommen", "aux": "sein" } } },
-    { "key": "vocab.geben.verb", "kind": "vocab", "level": "A1", "title": "geben",
-      "vocab": { "lemma": "geben", "pos": "VERB",
-        "verb_forms": {
-          "praesens": { "ich": "gebe", "du": "gibst", "er": "gibt", "wir": "geben", "ihr": "gebt", "sie": "geben" },
-          "praeteritum": { "ich": "gab", "du": "gabst", "er": "gab", "wir": "gaben", "ihr": "gabt", "sie": "gaben" },
-          "partizip2": "gegeben", "aux": "haben" },
-        "valency": { "objects": ["Dat", "Acc"] } },
-      "links": [ { "to": "gram.dat.indirect_obj", "kind": "related" } ] },
-    { "key": "vocab.essen.verb", "kind": "vocab", "level": "A1", "title": "essen",
-      "vocab": { "lemma": "essen", "pos": "VERB",
-        "verb_forms": {
-          "praesens": { "ich": "esse", "du": "isst", "er": "isst", "wir": "essen", "ihr": "esst", "sie": "essen" },
-          "praeteritum": { "ich": "aß", "du": "aßest", "er": "aß", "wir": "aßen", "ihr": "aßt", "sie": "aßen" },
-          "partizip2": "gegessen", "aux": "haben" } } },
-    { "key": "vocab.wohnen.verb", "kind": "vocab", "level": "A1", "title": "wohnen",
-      "vocab": { "lemma": "wohnen", "pos": "VERB",
-        "verb_forms": {
-          "praesens": { "ich": "wohne", "du": "wohnst", "er": "wohnt", "wir": "wohnen", "ihr": "wohnt", "sie": "wohnen" },
-          "praeteritum": { "ich": "wohnte", "du": "wohntest", "er": "wohnte", "wir": "wohnten", "ihr": "wohntet", "sie": "wohnten" },
-          "partizip2": "gewohnt", "aux": "haben" } } },
-    { "key": "vocab.warten.verb", "kind": "vocab", "level": "A1", "title": "warten",
-      "vocab": { "lemma": "warten", "pos": "VERB",
-        "verb_forms": {
-          "praesens": { "ich": "warte", "du": "wartest", "er": "wartet", "wir": "warten", "ihr": "wartet", "sie": "warten" },
-          "praeteritum": { "ich": "wartete", "du": "wartetest", "er": "wartete", "wir": "warteten", "ihr": "wartetet", "sie": "warteten" },
-          "partizip2": "gewartet", "aux": "haben" },
-        "valency": { "prep": "auf", "case": "Acc" } } },
-    { "key": "vocab.kaufen.verb", "kind": "vocab", "level": "A1", "title": "kaufen",
-      "vocab": { "lemma": "kaufen", "pos": "VERB",
-        "verb_forms": {
-          "praesens": { "ich": "kaufe", "du": "kaufst", "er": "kauft", "wir": "kaufen", "ihr": "kauft", "sie": "kaufen" },
-          "praeteritum": { "ich": "kaufte", "du": "kauftest", "er": "kaufte", "wir": "kauften", "ihr": "kauftet", "sie": "kauften" },
-          "partizip2": "gekauft", "aux": "haben" } } },
-    { "key": "vocab.aufstehen.verb", "kind": "vocab", "level": "A1", "title": "aufstehen",
-      "vocab": { "lemma": "aufstehen", "pos": "VERB", "unit_type": "separable_verb",
-        "verb_forms": {
-          "praesens": { "ich": "stehe", "du": "stehst", "er": "steht", "wir": "stehen", "ihr": "steht", "sie": "stehen" },
-          "praeteritum": { "ich": "stand", "du": "standest", "er": "stand", "wir": "standen", "ihr": "standet", "sie": "standen" },
-          "partizip2": "aufgestanden", "aux": "sein", "prefix": "auf" } },
-      "forms": [ { "form": "aufzustehen", "morph": "ZuInf" } ],
-      "links": [ { "to": "gram.verb.separable", "kind": "related" } ] },
-
-    { "key": "vocab.gut.adj", "kind": "vocab", "level": "A1", "title": "gut",
-      "vocab": { "lemma": "gut", "pos": "ADJ" },
-      "forms": [ { "form": "gute" }, { "form": "guter" }, { "form": "gutes" }, { "form": "gutem" }, { "form": "guten" },
-                 { "form": "besser", "morph": "Cmp" }, { "form": "besten", "morph": "Sup" } ] },
-    { "key": "vocab.gross.adj", "kind": "vocab", "level": "A1", "title": "groß",
-      "vocab": { "lemma": "groß", "pos": "ADJ" },
-      "forms": [ { "form": "große" }, { "form": "großer" }, { "form": "großes" }, { "form": "großem" }, { "form": "großen" },
-                 { "form": "größer", "morph": "Cmp" }, { "form": "größten", "morph": "Sup" } ] },
-    { "key": "vocab.neu.adj", "kind": "vocab", "level": "A1", "title": "neu",
-      "vocab": { "lemma": "neu", "pos": "ADJ" },
-      "forms": [ { "form": "neue" }, { "form": "neuer" }, { "form": "neues" }, { "form": "neuem" }, { "form": "neuen" } ] },
-    { "key": "vocab.heute.adv", "kind": "vocab", "level": "A1", "title": "heute",
-      "vocab": { "lemma": "heute", "pos": "ADV" } },
-    { "key": "vocab.gern.adv", "kind": "vocab", "level": "A1", "title": "gern",
-      "vocab": { "lemma": "gern", "pos": "ADV" },
-      "forms": [ { "form": "gerne" }, { "form": "lieber", "morph": "Cmp" } ] },
-
-    { "key": "gram.nom.subject", "kind": "grammar", "level": "A1", "title": "Nominativ: Subjekt",
-      "grammar": { "category": "case", "annotation_labels": ["Nom", "Subj"] } },
-    { "key": "gram.acc.direct_obj", "kind": "grammar", "level": "A1", "title": "Akkusativ: direktes Objekt",
-      "grammar": { "category": "case", "annotation_labels": ["Acc", "ObjAcc"] },
-      "links": [ { "to": "gram.nom.subject", "kind": "prerequisite" } ] },
-    { "key": "gram.dat.indirect_obj", "kind": "grammar", "level": "A1", "title": "Dativ: indirektes Objekt",
-      "grammar": { "category": "case", "annotation_labels": ["Dat", "ObjDat"] },
-      "links": [ { "to": "gram.acc.direct_obj", "kind": "prerequisite" } ] },
-    { "key": "gram.tense.praesens", "kind": "grammar", "level": "A1", "title": "Präsens",
-      "grammar": { "category": "tense", "annotation_labels": ["Fin", "Pred"] } },
-    { "key": "gram.tense.perfekt_haben", "kind": "grammar", "level": "A1", "title": "Perfekt mit haben",
-      "grammar": { "category": "tense", "annotation_labels": ["AUX", "Part2", "Pred"] },
-      "links": [ { "to": "gram.tense.praesens", "kind": "prerequisite" } ] },
-    { "key": "gram.tense.perfekt_sein", "kind": "grammar", "level": "A1", "title": "Perfekt mit sein",
-      "grammar": { "category": "tense", "annotation_labels": ["AUX", "Part2", "Pred"] },
-      "links": [ { "to": "gram.tense.praesens", "kind": "prerequisite" }, { "to": "gram.tense.perfekt_haben", "kind": "related" } ] },
-    { "key": "gram.wo.v2", "kind": "grammar", "level": "A1", "title": "Verbzweitstellung im Aussagesatz",
-      "grammar": { "category": "word_order", "annotation_labels": ["Pred"] },
-      "links": [ { "to": "gram.tense.praesens", "kind": "prerequisite" } ] },
-    { "key": "gram.q.w_frage", "kind": "grammar", "level": "A1", "title": "W-Frage",
-      "grammar": { "category": "word_order", "annotation_labels": ["Pred"] },
-      "links": [ { "to": "gram.wo.v2", "kind": "prerequisite" } ] },
-    { "key": "gram.q.ja_nein", "kind": "grammar", "level": "A1", "title": "Ja/Nein-Frage (Verb an erster Stelle)",
-      "grammar": { "category": "word_order", "annotation_labels": ["Pred"] },
-      "links": [ { "to": "gram.tense.praesens", "kind": "prerequisite" } ] },
-    { "key": "gram.neg.nicht", "kind": "grammar", "level": "A1", "title": "Negation mit nicht",
-      "grammar": { "category": "negation", "annotation_labels": ["PART"] } },
-    { "key": "gram.neg.kein", "kind": "grammar", "level": "A1", "title": "Negation mit kein",
-      "grammar": { "category": "negation", "annotation_labels": ["DET"] },
-      "links": [ { "to": "gram.acc.direct_obj", "kind": "prerequisite" }, { "to": "gram.neg.nicht", "kind": "related" } ] },
-    { "key": "gram.modal.inf", "kind": "grammar", "level": "A1", "title": "Modalverb mit Infinitiv",
-      "grammar": { "category": "verb", "annotation_labels": ["AUX", "Inf", "Pred"] },
-      "links": [ { "to": "gram.tense.praesens", "kind": "prerequisite" } ] },
-    { "key": "gram.verb.separable", "kind": "grammar", "level": "A1", "title": "Trennbare Verben im Präsens",
-      "grammar": { "category": "verb", "annotation_labels": ["PART", "Pred"] },
-      "links": [ { "to": "gram.tense.praesens", "kind": "prerequisite" } ] },
-
-    { "key": "pat.ich_moechte", "kind": "pattern", "level": "A1", "title": "Ich möchte ...",
-      "pattern": { "template": "Ich möchte {NOUN:acc}.", "slots": { "NOUN": { "case": "Acc" } },
-                   "function": "einen Wunsch höflich äußern" },
-      "links": [ { "to": "gram.acc.direct_obj", "kind": "uses" } ] },
-    { "key": "pat.koennen_sie_mir_helfen", "kind": "pattern", "level": "A1", "title": "Können Sie mir ... helfen?",
-      "pattern": { "template": "Können Sie mir {PP:bei+Dat} helfen?",
-                   "slots": { "PP": { "prep": "bei", "case": "Dat", "optional": true } },
-                   "function": "höflich um Hilfe bitten" },
-      "links": [ { "to": "gram.modal.inf", "kind": "uses" }, { "to": "gram.q.ja_nein", "kind": "uses" } ] },
-    { "key": "pat.wie_viel_kostet", "kind": "pattern", "level": "A1", "title": "Wie viel kostet ...?",
-      "pattern": { "template": "Wie viel kostet {NOUN:nom}?", "slots": { "NOUN": { "case": "Nom" } },
-                   "function": "nach dem Preis fragen" },
-      "links": [ { "to": "gram.q.w_frage", "kind": "uses" } ] },
-    { "key": "pat.ich_heisse", "kind": "pattern", "level": "A1", "title": "Ich heiße ...",
-      "pattern": { "template": "Ich heiße {PROPN}.", "slots": { "PROPN": {} },
-                   "function": "sich vorstellen" } },
-    { "key": "pat.es_gibt", "kind": "pattern", "level": "A1", "title": "Es gibt ...",
-      "pattern": { "template": "Es gibt {NOUN:acc}.", "slots": { "NOUN": { "case": "Acc" } },
-                   "function": "ausdrücken, dass etwas vorhanden ist" },
-      "links": [ { "to": "gram.acc.direct_obj", "kind": "uses" } ] }
-  ]
+ "seed": {
+  "id": "fixture_a1",
+  "title": "Fixture A1",
+  "level": "A1",
+  "version": 1
+ },
+ "entries": [
+  {
+   "key": "a1.abfahren",
+   "headword": "abfahren",
+   "lemma": "abfahren",
+   "pos": "VERB",
+   "gender": null,
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.uhr",
+   "headword": "die Uhr, -en",
+   "lemma": "Uhr",
+   "pos": "NOUN",
+   "gender": "Fem",
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.luft",
+   "headword": "die Luft",
+   "lemma": "Luft",
+   "pos": "NOUN",
+   "gender": "Fem",
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.luegen",
+   "headword": "lügen, lügt, log, hat gelogen",
+   "lemma": "lügen",
+   "pos": "VERB",
+   "gender": null,
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.luege",
+   "headword": "die Lüge, -n",
+   "lemma": "Lüge",
+   "pos": "NOUN",
+   "gender": "Fem",
+   "group": null,
+   "region": null,
+   "parent": "a1.luegen"
+  },
+  {
+   "key": "a1.rauchen",
+   "headword": "rauchen",
+   "lemma": "rauchen",
+   "pos": "VERB",
+   "gender": null,
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.manchmal",
+   "headword": "manchmal",
+   "lemma": "manchmal",
+   "pos": "ADV",
+   "gender": null,
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.rot",
+   "headword": "rot",
+   "lemma": "rot",
+   "pos": "ADJ",
+   "gender": null,
+   "group": "Farben",
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.parkieren",
+   "headword": "parkieren (CH) → D, A: parken",
+   "lemma": "parkieren",
+   "pos": "VERB",
+   "gender": null,
+   "group": null,
+   "region": "CH",
+   "parent": null
+  }
+ ],
+ "sentences": [
+  {
+   "key": "a1.abfahren.1",
+   "source": "goethe",
+   "de": "Wir fahren um 12 Uhr ab.",
+   "spoken": "Wir fahren um zwölf Uhr ab.",
+   "translations": {
+    "zh": "我们十二点出发。",
+    "en": "We leave at twelve o'clock."
+   },
+   "words": [
+    [
+     "Wir",
+     "wir",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "fahren",
+     "abfahren",
+     "VERB",
+     "Fin"
+    ],
+    [
+     "um",
+     "um",
+     "ADP",
+     "Acc"
+    ],
+    [
+     "12",
+     "zwölf",
+     "NUM",
+     ""
+    ],
+    [
+     "Uhr",
+     "Uhr",
+     "NOUN",
+     "Acc",
+     "Fem"
+    ],
+    [
+     "ab",
+     "abfahren",
+     "PART",
+     ""
+    ],
+    [
+     ".",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Subj",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      1,
+      5
+     ]
+    },
+    {
+     "fn": "AdvT",
+     "tokens": [
+      2,
+      3,
+      4
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.abfahren",
+     "tokens": [
+      1,
+      5
+     ]
+    },
+    {
+     "key": "a1.uhr",
+     "tokens": [
+      4
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.luft.1",
+   "source": "goethe",
+   "de": "Die Seeluft tut mir gut.",
+   "spoken": null,
+   "translations": {
+    "zh": "海边的空气对我有好处。",
+    "en": "The sea air does me good."
+   },
+   "words": [
+    [
+     "Die",
+     "der",
+     "DET",
+     "Nom"
+    ],
+    [
+     "Seeluft",
+     "Seeluft",
+     "NOUN",
+     "Nom",
+     "Fem"
+    ],
+    [
+     "tut",
+     "tun",
+     "VERB",
+     "Fin"
+    ],
+    [
+     "mir",
+     "ich",
+     "PRON",
+     "Dat"
+    ],
+    [
+     "gut",
+     "gut",
+     "ADJ",
+     ""
+    ],
+    [
+     ".",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Subj",
+     "tokens": [
+      0,
+      1
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      2
+     ]
+    },
+    {
+     "fn": "ObjDat",
+     "tokens": [
+      3
+     ]
+    },
+    {
+     "fn": "AdvM",
+     "tokens": [
+      4
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.luft",
+     "tokens": [
+      1
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.luegen.1",
+   "source": "goethe",
+   "de": "Du sollst nicht lügen.",
+   "spoken": null,
+   "translations": {
+    "zh": "你不应该说谎。",
+    "en": "You should not lie."
+   },
+   "words": [
+    [
+     "Du",
+     "du",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "sollst",
+     "sollen",
+     "AUX",
+     "Fin"
+    ],
+    [
+     "nicht",
+     "nicht",
+     "PART",
+     ""
+    ],
+    [
+     "lügen",
+     "lügen",
+     "VERB",
+     "Inf"
+    ],
+    [
+     ".",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Subj",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      1,
+      3
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.luegen",
+     "tokens": [
+      3
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.luege.1",
+   "source": "goethe",
+   "de": "Das ist eine Lüge!",
+   "spoken": null,
+   "translations": {
+    "zh": "这是谎话！",
+    "en": "That is a lie!"
+   },
+   "words": [
+    [
+     "Das",
+     "das",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "ist",
+     "sein",
+     "AUX",
+     "Fin"
+    ],
+    [
+     "eine",
+     "ein",
+     "DET",
+     "Nom"
+    ],
+    [
+     "Lüge",
+     "Lüge",
+     "NOUN",
+     "Nom",
+     "Fem"
+    ],
+    [
+     "!",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Subj",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      1
+     ]
+    },
+    {
+     "fn": "PredC",
+     "tokens": [
+      2,
+      3
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.luege",
+     "tokens": [
+      3
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.rauchen.1",
+   "source": "goethe",
+   "de": "Rauchen Sie? – Manchmal.",
+   "spoken": null,
+   "translations": {
+    "zh": "您抽烟吗？——有时候。",
+    "en": "Do you (formal) smoke? – Sometimes."
+   },
+   "words": [
+    [
+     "Rauchen",
+     "rauchen",
+     "VERB",
+     "Fin"
+    ],
+    [
+     "Sie",
+     "Sie",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "?",
+     "",
+     "PUNCT",
+     ""
+    ],
+    [
+     "–",
+     "",
+     "PUNCT",
+     ""
+    ],
+    [
+     "Manchmal",
+     "manchmal",
+     "ADV",
+     ""
+    ],
+    [
+     ".",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Pred",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Subj",
+     "tokens": [
+      1
+     ]
+    },
+    {
+     "fn": "AdvT",
+     "tokens": [
+      4
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.rauchen",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "key": "a1.manchmal",
+     "tokens": [
+      4
+     ]
+    }
+   ],
+   "orig": "Rauchen Sie?\n– Manchmal."
+  },
+  {
+   "key": "a1.rot.1",
+   "source": "generated",
+   "de": "Das Auto ist rot.",
+   "spoken": null,
+   "translations": {
+    "zh": "这辆车是红色的。",
+    "en": "The car is red."
+   },
+   "words": [
+    [
+     "Das",
+     "der",
+     "DET",
+     "Nom"
+    ],
+    [
+     "Auto",
+     "Auto",
+     "NOUN",
+     "Nom",
+     "Neut"
+    ],
+    [
+     "ist",
+     "sein",
+     "AUX",
+     "Fin"
+    ],
+    [
+     "rot",
+     "rot",
+     "ADJ",
+     ""
+    ],
+    [
+     ".",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Subj",
+     "tokens": [
+      0,
+      1
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      2
+     ]
+    },
+    {
+     "fn": "PredC",
+     "tokens": [
+      3
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.rot",
+     "tokens": [
+      3
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.parkieren.1",
+   "source": "goethe",
+   "de": "Hier dürfen Sie nicht parkieren.",
+   "spoken": null,
+   "translations": {
+    "zh": "您不能在这里停车。",
+    "en": "You (formal) may not park here."
+   },
+   "words": [
+    [
+     "Hier",
+     "hier",
+     "ADV",
+     ""
+    ],
+    [
+     "dürfen",
+     "dürfen",
+     "AUX",
+     "Fin"
+    ],
+    [
+     "Sie",
+     "Sie",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "nicht",
+     "nicht",
+     "PART",
+     ""
+    ],
+    [
+     "parkieren",
+     "parkieren",
+     "VERB",
+     "Inf"
+    ],
+    [
+     ".",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "AdvL",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      1,
+      4
+     ]
+    },
+    {
+     "fn": "Subj",
+     "tokens": [
+      2
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.parkieren",
+     "tokens": [
+      4
+     ]
+    }
+   ],
+   "orig": null
+  }
+ ]
 }

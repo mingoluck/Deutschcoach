@@ -849,6 +849,166 @@
           }
         }
       }
+    },
+    "%@ could not be imported: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 无法导入：%2$@"
+          }
+        }
+      }
+    },
+    "%@ · v%lld · %lld entries · %lld sentences · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · v%2$lld · %3$lld 个词条 · %4$lld 个句子 · %5$@"
+          }
+        }
+      }
+    },
+    "%lld sentences at %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ 级别共 %1$lld 句"
+          }
+        }
+      }
+    },
+    "Content" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内容"
+          }
+        }
+      }
+    },
+    "Entries" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "词条"
+          }
+        }
+      }
+    },
+    "Loading the word lists…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入词表…"
+          }
+        }
+      }
+    },
+    "No sessions yet." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有练习记录。"
+          }
+        }
+      }
+    },
+    "No word list imported." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未导入词表。"
+          }
+        }
+      }
+    },
+    "Practice is being rebuilt." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "练习功能重建中。"
+          }
+        }
+      }
+    },
+    "Practice uses only the sentences of this level. The next session uses the new level." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只练习这个级别的句子。下一组练习开始使用新级别。"
+          }
+        }
+      }
+    },
+    "Sentences" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "句子"
+          }
+        }
+      }
+    },
+    "This deletes %lld practice records and %lld sessions, including the history. The word lists stay. A backup is saved first." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将删除 %1$lld 条练习记录和 %2$lld 组练习（包括历史）。词表会保留。删除前会先备份。"
+          }
+        }
+      }
+    },
+    "This deletes %lld practice records and all content, then loads the bundled word lists again. A backup is saved first." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将删除 %lld 条练习记录和全部内容，然后重新载入内置词表。删除前会先备份。"
+          }
+        }
+      }
+    },
+    "Translation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译"
+          }
+        }
+      }
+    },
+    "Translations and the interface follow this language." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "句子翻译和界面都使用这个语言。"
+          }
+        }
+      }
+    },
+    "Word Lists" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "词表"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

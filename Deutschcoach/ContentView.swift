@@ -7,7 +7,7 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             switch model.phase {
-            case .starting:
+            case .starting, .importing:
                 ProgressView("Opening database…")
             case .failed(let message):
                 Label(message, systemImage: "exclamationmark.triangle")
@@ -22,34 +22,36 @@ struct ContentView: View {
 
     private var readyView: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Database").font(.headline)
+            Text(verbatim: "Database").font(.headline)
             Text(model.databasePath ?? "–")
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
 
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
-                ForEach(ElementKind.allCases, id: \.self) { kind in
+                GridRow {
+                    Text(verbatim: "")
+                    Text(verbatim: "entries").bold()
+                    Text(verbatim: "sentences").bold()
+                }
+                ForEach(CEFRLevel.allCases, id: \.self) { level in
                     GridRow {
-                        Text(kind.rawValue)
-                        Text("\(model.summary.elementsByKind[kind] ?? 0)").monospacedDigit()
+                        Text(verbatim: level.rawValue)
+                        Text(verbatim: "\(model.library.entries[level] ?? 0)").monospacedDigit()
+                        Text(verbatim: "\(model.library.sentences[level] ?? 0)").monospacedDigit()
                     }
                 }
                 Divider()
                 GridRow {
-                    Text("elements").bold()
-                    Text("\(model.summary.totalElements)").monospacedDigit().bold()
+                    Text(verbatim: "practice events")
+                    Text(verbatim: "\(model.library.practiceEvents)").monospacedDigit()
                 }
                 GridRow {
-                    Text("word forms")
-                    Text("\(model.summary.wordForms)").monospacedDigit()
-                }
-                GridRow {
-                    Text("links")
-                    Text("\(model.summary.links)").monospacedDigit()
+                    Text(verbatim: "sessions")
+                    Text(verbatim: "\(model.library.sessions)").monospacedDigit()
                 }
             }
 
-            Text("Seeds are imported in Settings › Library.")
+            Text(verbatim: "Bundled seeds: \(BundledSeeds.urls().map(\.lastPathComponent).joined(separator: ", "))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

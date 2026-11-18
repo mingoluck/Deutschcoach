@@ -22,6 +22,9 @@ nonisolated final class AppDatabase: Sendable {
         migrator.registerMigration("v2") { db in
             try db.execute(sql: Schema.v2)
         }
+        migrator.registerMigration("v3") { db in
+            try db.execute(sql: Schema.v3)
+        }
         return migrator
     }
 }
@@ -39,7 +42,7 @@ nonisolated extension AppDatabase {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appending(path: "db.sqlite")
         // DatabasePool uses WAL mode, so reads can run concurrently with writes
-        // (e.g. background sentence generation in later milestones).
+        // (e.g. the seed import runs off the main actor).
         let pool = try DatabasePool(path: url.path(percentEncoded: false))
         return try AppDatabase(pool)
     }

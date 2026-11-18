@@ -1,105 +1,36 @@
 import Foundation
 import GRDB
 
-// Content-layer records (DESIGN.md §2.2). User-layer records are added in M5.
-// JSON columns are kept as raw JSON text here; typed decoding comes when a feature needs it.
-
-nonisolated enum ElementKind: String, Codable, Sendable, CaseIterable {
-    case vocab, grammar, pattern
-}
-
-nonisolated enum ElementStatus: String, Codable, Sendable {
-    case active, candidate, retired
-}
+// Content-layer records (DESIGN.md §2.2). JSON columns are kept as JSON text.
 
 nonisolated enum CEFRLevel: String, Codable, Sendable, CaseIterable {
     case a1 = "A1", a2 = "A2", b1 = "B1", b2 = "B2"
+
+    /// The levels with bundled content, offered in Settings (DESIGN.md §3.2).
+    static let practiceLevels: [CEFRLevel] = [.a1, .a2, .b1]
 }
 
-nonisolated struct Element: Codable, Sendable, Hashable, FetchableRecord, MutablePersistableRecord {
-    static let databaseTableName = "element"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var id: Int64?
-    var key: String
-    var kind: ElementKind
-    var level: CEFRLevel
-    var title: String
-    var freqRank: Int?
-    var status: ElementStatus
-    var levelSrc: String?
-    var reviewed: Bool
-    var targetable: Bool
-
-    mutating func didInsert(_ inserted: InsertionSuccess) {
-        id = inserted.rowID
-    }
+nonisolated enum ContentStatus: String, Codable, Sendable {
+    case active, retired
 }
 
-nonisolated struct VocabDetail: Codable, Sendable, Hashable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "vocab_detail"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var elementId: Int64
-    var lemma: String
-    var pos: String
-    var gender: String?
-    var plural: String?
-    var verbForms: String?   // JSON
-    var valency: String?     // JSON
-    var unitType: String
-    var sense: String?
+/// Austrian or Swiss usage (DESIGN.md §2.4).
+nonisolated enum Region: String, Codable, Sendable {
+    case a = "A", ch = "CH"
 }
 
-nonisolated struct GrammarDetail: Codable, Sendable, Hashable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "grammar_detail"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var elementId: Int64
-    var category: String
-    var annotationLabels: String?  // JSON
+/// Where a sentence comes from (DESIGN.md §2.2).
+nonisolated enum SentenceSource: String, Codable, Sendable {
+    /// An example sentence of the Goethe word list.
+    case goethe
+    /// Written offline for a word-group item.
+    case generated
+    /// Reserved for sentences generated at run time in a later version.
+    case llm
 }
 
-nonisolated struct PatternDetail: Codable, Sendable, Hashable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "pattern_detail"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var elementId: Int64
-    var template: String
-    var slots: String?  // JSON
-    var function: String?
-}
-
-nonisolated enum ElementLinkKind: String, Codable, Sendable {
-    /// `from` requires `to` to be mastered first.
-    case prerequisite
-    case partOf = "part_of"
-    case uses
-    case related
-}
-
-nonisolated struct ElementLink: Codable, Sendable, Hashable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "element_link"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var fromId: Int64
-    var toId: Int64
-    var kind: ElementLinkKind
-}
-
-nonisolated struct WordForm: Codable, Sendable, Hashable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "word_form"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var form: String
-    var elementId: Int64
-    var morph: String?
+nonisolated enum SeedOrigin: String, Codable, Sendable {
+    case bundled, user
 }
 
 /// One seed file that was imported (DESIGN.md §2.5).
@@ -110,9 +41,83 @@ nonisolated struct SeedImport: Codable, Sendable, Hashable, FetchableRecord, Per
 
     var seedId: String
     var title: String
+    var level: CEFRLevel
     var version: Int
-    var elementCount: Int
+    var origin: SeedOrigin
+    var entryCount: Int
+    var sentenceCount: Int
+    /// Unix time in seconds.
     var importedAt: Int64
 
     var id: String { seedId }
+}
+
+/// One headword of a word list.
+nonisolated struct Entry: Codable, Sendable, Hashable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "entry"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+
+    var id: Int64
+    var key: String
+    var seedId: String
+    var level: CEFRLevel
+    var headword: String
+    var lemma: String
+    var pos: String
+    var gender: String?
+    var grp: String?
+    var region: Region?
+    var parentId: Int64?
+    var sort: Int
+    var status: ContentStatus
+}
+
+nonisolated struct Sentence: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "sentence"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+
+    var id: Int64
+    var key: String
+    var seedId: String
+    var level: CEFRLevel
+    var source: SentenceSource
+    var de: String
+    var spoken: String?
+    /// JSON object: language code → translation, e.g. `{"en": "…", "zh": "…"}`.
+    var translations: String
+    /// JSON `{"words": [...], "spans": [...]}`.
+    var annotation: String
+    var sort: Int
+    var status: ContentStatus
+
+    /// The text answers are matched against (DESIGN.md §3.4).
+    var matchText: String { spoken ?? de }
+
+    func decodedAnnotation() throws -> SentenceAnnotation {
+        try JSONDecoder().decode(SentenceAnnotation.self, from: Data(annotation.utf8))
+    }
+
+    func translation(for language: String) -> String? {
+        guard let dictionary = try? JSONDecoder().decode([String: String].self, from: Data(translations.utf8)) else {
+            return nil
+        }
+        return dictionary[language]
+    }
+}
+
+nonisolated struct SentenceEntry: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "sentence_entry"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+
+    var sentenceId: Int64
+    var entryId: Int64
+    /// JSON array of token indices.
+    var tokens: String
+
+    var decodedTokens: [Int] {
+        (try? JSONDecoder().decode([Int].self, from: Data(tokens.utf8))) ?? []
+    }
 }

@@ -200,7 +200,7 @@ Seed files are JSON, one file per word list. The format is documented in `SeedMo
 
 **Entries**
 
-- `headword` keeps the list's notation for display (article, plural, principal parts, feminine form). `lemma`, `pos` and, for nouns, `gender` are parsed from it; full conjugation tables are not stored.
+- `headword` keeps the list's notation for display (article, plural, principal parts, feminine form). `lemma`, `pos` and, for nouns, `gender` are parsed from it; full conjugation tables are not stored. `lemma` has no article and, for reflexive verbs, no `sich` (`sich lohnen` → `lohnen`).
 - `group`: the Wortgruppe name (e.g. `Farben`, `Berufe`) for entries taken from the word-group pages; null for the alphabetical list.
 - `region`: `A` or `CH` for entries marked as Austrian or Swiss usage; the list's cross-reference (`→ D: Treppe`) stays in `headword`.
 - `parent`: the key of the main entry for derived sub-entries (marked `↳` in the source).
@@ -226,20 +226,20 @@ Seed files are JSON, one file per word list. The format is documented in `SeedMo
 
 ### 2.5 Seed Import
 
-Seed files live in the repository's `seeds/` directory and are **bundled with the app** as resources. The bundled seeds for 0.2 are `goethe_a1.json`, `goethe_a2.json`, `goethe_b1.json`. The 0.1 seeds (`vocab_*.json`, `core_*.json`) are deleted.
+Seed files live in `Deutschcoach/SeedData/` and are **bundled with the app** as resources (the app target's synchronized folder copies them; no project change is needed). The bundled seeds for 0.2 are `goethe_a1.json`, `goethe_a2.json`, `goethe_b1.json`, listed by id in `BundledSeeds.ids`; a listed file that does not exist yet is skipped. The file name is the seed id. The 0.1 `seeds/` directory (`vocab_*.json`, `core_*.json`) is deleted.
 
 **Automatic import of bundled seeds**: at launch, before the practice screen starts, each bundled seed whose `version` is newer than the `seed_import` row of the same id (or which has no row) is imported, in one transaction, off the main actor. A fresh install imports all three; the user never sees an import step. Importing ~7,500 sentences is expected to take well under a second; while it runs, the practice screen shows a short progress state.
 
 Import rules (shared by bundled and, later, user-selected seeds):
 
-1. **Validate first (no writes)**: the file decodes and has a header; keys are unique within the file and do not belong to another seed in the database; every sentence passes the checks of §4.3. A bundled seed that fails validation is a build error caught by the unit tests (§4.3); at run time it is skipped and the error is shown in Settings › Library.
+1. **Validate first (no writes)**: the file decodes and has a header; keys are unique within the file and do not belong to another seed in the database; every sentence passes the checks of §4.3. A bundled seed that fails validation is a build error caught by the unit tests (§4.3); at run time it is skipped (the other seeds are still imported) and the error is shown in Settings › Library.
 2. **Upsert by key** with `INSERT … ON CONFLICT(key) DO UPDATE`, so ids never change. `INSERT OR REPLACE` must not be used: it deletes the row, changes its id, and cascades the delete.
 3. Each sentence's `sentence_entry` rows are replaced. Entry `parent` links are resolved after all entries are upserted.
 4. Entries and sentences of the same `seed_id` that are absent from the new version get `status = 'retired'`; they are never deleted, because user data references them. Retired sentences are never picked for practice.
 5. The header is upserted into `seed_import` with its counts, origin and import time.
 6. Importing does not touch the user layer.
 
-Manual import of user-selected seed files (preview sheet, file picker, read-only user-selected-files entitlement) is not offered in 0.2; it returns when there is a second source of content (§8). The importer is written so that it can serve both.
+Manual import of user-selected seed files (preview sheet, file picker, read-only user-selected-files entitlement) is not offered in 0.2, and the entitlement is removed; it returns when there is a second source of content (§8). The importer is written so that it can serve both (`seed_import.origin`).
 
 ### 2.6 Clearing Data
 
@@ -355,16 +355,16 @@ When in doubt, a sentence is skipped and reported rather than changed.
 Every sentence goes through two checks before it is written to a seed:
 
 1. **Review**: after a batch is translated and annotated, it is reviewed again in the session, sentence by sentence: is the German sentence correct and complete, do both translations match it, does the annotation follow Section 5 (POS, case, verb form, gender, constituents)? Problems that cannot be fixed with certainty are skipped and reported.
-2. **Validation** (mechanical, the same code as the import validation in §2.5, run as a unit test over the bundled seeds):
+2. **Validation** (mechanical: `SeedValidator`, the same code as the import validation in §2.5, run as a unit test over the bundled seeds):
    - all fields present; keys unique and well-formed; entry references resolve;
    - concatenating the forms of `words` reproduces `de`; each row has 4 or 5 items; item 5 only on `NOUN`;
-   - all labels are in the label set (§5); all token indices in range; punctuation in no span;
-   - every sentence links at least one entry; each entry's tokens are non-empty and their lemma matches the entry's lemma;
+   - all labels are in the label set (§5), and item 4 fits the POS: a case for `NOUN`, `PROPN`, `PRON`, `DET`, `ADP`; a verb form for `VERB`, `AUX`; a case or empty for `ADJ`; empty otherwise; all token indices in range; punctuation in no span;
+   - every sentence links at least one entry; each entry's tokens are non-empty and carry the entry's lemma: the tokens' lemmas in order (repeats merged, so both parts of a separable verb count once) equal it, or one of them contains it (compounds and feminine forms: `Seeluft` for `Luft`, `Lehrerin` for `Lehrer`); case is ignored;
    - `spoken` is present when `de` contains a digit, and contains no digits;
    - `zh` contains Chinese characters; `en` contains none;
    - word count within a lenient limit (about 30).
 
-**Skipped-content report**: every skipped item is listed in `seeds/reports/<seed id>_skipped.md` (entry, source text, reason), committed with the seed, and summarized to the project owner after each batch. Fixed items can be added in a later seed version.
+**Skipped-content report**: every skipped item is listed in `docs/seed-reports/<seed id>_skipped.md` (entry, source text, reason), committed with the seed, and summarized to the project owner after each batch. Fixed items can be added in a later seed version.
 
 ### 4.4 Word Groups (Wortgruppen)
 
@@ -493,7 +493,7 @@ Milestones M1–M7 built version 0.1 (project setup, speech loop, annotation ren
 
 | Milestone | Content | Done when |
 |---|---|---|
-| M8 | **Data layer and import.** Migration to the 0.2 schema (§2.2); `SeedModels` for the new format; importer with validation, upsert, retirement and automatic import of bundled seeds (§2.5); seed validation as a unit test over the bundled seeds; a small fixture seed for tests; clear / reset with re-import (§2.6). Delete the 0.1 seeds and the code that only served 0.1: batch generation, sentence validator, generation/judge/translation prompts, network monitor, element picker, manual import UI | Unit tests pass; on a fresh database the fixture seed is imported automatically, a higher version upserts and retires, a broken seed is rejected |
+| M8 | **Data layer and import.** Migration to the 0.2 schema (§2.2); `SeedModels` for the new format; importer with validation, upsert, retirement and automatic import of bundled seeds (§2.5); seed validation as a unit test over the bundled seeds; a small fixture seed for tests; clear / reset with re-import (§2.6). Delete the 0.1 seeds and the code that only served 0.1: batch generation, sentence validator, generation/judge/translation prompts, network monitor, practice engine, history store, manual import UI and its entitlement. Until M9 the practice and history tabs show placeholders | Unit tests pass; on a fresh database the fixture seed is imported automatically, a higher version upserts and retires, a broken seed is rejected |
 | M9 | **Practice on sentences.** Session building, sentence selection and mode assignment (§3.2), cloze blanks, exact-match scoring with digit expansion (§3.4), progress rules (§3.5), history of sessions, settings without the API key, no LLM blocking | Two full sessions practiced end to end on the fixture seed, in all three modes, offline |
 | M10 | **A1 seed.** Clean, translate, annotate, review and validate the A1 list including its word groups (§4); `seeds/goethe_a1.json` and its skipped report; bundled with the app | Validation test passes; the project owner spot-checks the seed and practices A1 in the app |
 | M11 | **A2 seed**, as M10 | As M10 |

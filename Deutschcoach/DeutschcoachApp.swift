@@ -11,9 +11,7 @@ struct DeutschcoachApp: App {
                     PracticeView(model: model)
                 }
                 Tab("History", systemImage: "clock") {
-                    if let history = model.history {
-                        HistoryView(history: history)
-                    }
+                    HistoryView()
                 }
                 #if DEBUG
                 // Milestone lab screens, Debug builds only (DESIGN.md §6).

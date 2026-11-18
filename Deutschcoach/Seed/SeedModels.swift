@@ -1,152 +1,87 @@
 import Foundation
 
-// The seed file format (content layer only, DESIGN.md §2.5).
+// The seed file format (DESIGN.md §2.4). One file per word list:
 //
 // {
-//   "seed": { "id": "goethe_a1", "title": "Goethe A1 Wortschatz", "version": 1 },
-//   "elements": [
-//     { "key": "vocab.kind.noun", "kind": "vocab", "level": "A1", "title": "das Kind",
-//       "freq_rank": 120,
-//       "vocab": { "lemma": "Kind", "pos": "NOUN", "gender": "Neut", "plural": "Kinder" },
-//       "forms": [ { "form": "Kindern", "morph": "Dat|Plur" } ],
-//       "links": [ { "to": "gram.nom.subject", "kind": "related" } ] }
+//   "seed": { "id": "goethe_a1", "title": "Goethe-Zertifikat A1 Wortliste", "level": "A1", "version": 1 },
+//   "entries": [
+//     { "key": "a1.abfahren", "headword": "abfahren", "lemma": "abfahren", "pos": "VERB",
+//       "gender": null, "group": null, "region": null, "parent": null }
+//   ],
+//   "sentences": [
+//     { "key": "a1.abfahren.1", "source": "goethe",
+//       "de": "Wir fahren um zwölf Uhr ab.", "spoken": null,
+//       "translations": { "zh": "我们十二点出发。", "en": "We leave at twelve o'clock." },
+//       "words": [["Wir", "wir", "PRON", "Nom"], ...],
+//       "spans": [{ "fn": "Subj", "tokens": [0] }, ...],
+//       "entries": [{ "key": "a1.abfahren", "tokens": [1, 5] }],
+//       "orig": null }
 //   ]
 // }
 //
-// The "seed" header is required for import (the import preview reports a missing one).
-// Optional fields: freq_rank, status (default "active"), level_src (default "import"),
-// reviewed (default false), targetable (default true), forms, links, and the optional fields
-// of each detail.
-// Exactly one of vocab / grammar / pattern must be present, matching `kind`.
+// Entries
+// - `headword`: the list's notation, for display. `lemma`: dictionary form, without the article
+//   and without `sich` for reflexive verbs. `pos`: a code of §5.2. `gender`: nouns only
+//   (`Masc` / `Fem` / `Neut` / `Plur`).
+// - `group`: the Wortgruppe name for entries from the word-group pages, else null.
+// - `region`: `A` or `CH` for Austrian or Swiss usage, else null.
+// - `parent`: key of the main entry for derived sub-entries (↳), else null.
+//
+// Sentences
+// - `de`: the sentence as practiced. `spoken`: the sentence as said, only when it differs from
+//   `de`; required whenever `de` contains a digit.
+// - `translations`: `zh` and `en`.
+// - `words` / `spans`: the annotation (§2.4, §5). Each row of `words` is
+//   `[form, lemma, POS, item 4, item 5 (nouns only)]`.
+// - `entries`: the entries the sentence illustrates, with their token indices.
+// - `orig`: the source text when cleaning changed it, else null. Never displayed.
+//
+// Optional fields may be null or left out. The checks are in `SeedValidator`.
 
-nonisolated struct SeedFile: Decodable, Sendable {
-    /// Decoded as optional so that a missing header is reported as such, not as a decoding error.
-    var seed: SeedHeader?
-    var elements: [SeedElement]
+nonisolated struct SeedFile: Codable, Sendable {
+    var seed: SeedHeader
+    var entries: [SeedEntry]
+    var sentences: [SeedSentence]
 }
 
-nonisolated struct SeedHeader: Codable, Sendable, Equatable {
+nonisolated struct SeedHeader: Codable, Sendable, Hashable {
     var id: String
     var title: String
+    var level: CEFRLevel
     var version: Int
 }
 
-nonisolated struct SeedElement: Decodable, Sendable {
+nonisolated struct SeedEntry: Codable, Sendable, Equatable {
     var key: String
-    var kind: ElementKind
-    var level: CEFRLevel
-    var title: String
-    var freqRank: Int?
-    var status: ElementStatus?
-    var levelSrc: String?
-    var reviewed: Bool?
-    var targetable: Bool?
-    var vocab: SeedVocab?
-    var grammar: SeedGrammar?
-    var pattern: SeedPattern?
-    /// Extra word forms beyond those derived from the vocab detail (lemma, plural, verb forms).
-    var forms: [SeedForm]?
-    var links: [SeedLink]?
-
-    enum CodingKeys: String, CodingKey {
-        case key, kind, level, title, status, reviewed, targetable, vocab, grammar, pattern, forms, links
-        case freqRank = "freq_rank"
-        case levelSrc = "level_src"
-    }
-}
-
-nonisolated struct SeedVocab: Decodable, Sendable {
+    var headword: String
     var lemma: String
     var pos: String
     var gender: String?
-    var plural: String?
-    var verbForms: VerbForms?
-    var valency: JSONValue?
-    var unitType: String?
-    var sense: String?
-
-    enum CodingKeys: String, CodingKey {
-        case lemma, pos, gender, plural, valency, sense
-        case verbForms = "verb_forms"
-        case unitType = "unit_type"
-    }
+    var group: String?
+    var region: Region?
+    var parent: String?
 }
 
-/// Stored as JSON in `vocab_detail.verb_forms`.
-nonisolated struct VerbForms: Codable, Sendable, Equatable {
-    /// Present tense, keyed by person: ich, du, er, wir, ihr, sie.
-    var praesens: [String: String]?
-    /// Simple past, keyed by person.
-    var praeteritum: [String: String]?
-    var partizip2: String?
-    /// Perfect auxiliary: "haben" or "sein".
-    var aux: String?
-    /// Separable prefix, e.g. "auf" for aufstehen.
-    var prefix: String?
+nonisolated struct SeedSentence: Codable, Sendable, Equatable {
+    var key: String
+    var source: SentenceSource
+    var de: String
+    var spoken: String?
+    var translations: [String: String]
+    var words: [AnnotationToken]
+    var spans: [AnnotationSpan]
+    var entries: [SeedSentenceEntry]
+    var orig: String?
+
+    var annotation: SentenceAnnotation { SentenceAnnotation(words: words, spans: spans) }
 }
 
-nonisolated struct SeedGrammar: Decodable, Sendable {
-    var category: String
-    var annotationLabels: [String]?
-
-    enum CodingKeys: String, CodingKey {
-        case category
-        case annotationLabels = "annotation_labels"
-    }
+nonisolated struct SeedSentenceEntry: Codable, Sendable, Equatable {
+    var key: String
+    var tokens: [Int]
 }
 
-nonisolated struct SeedPattern: Decodable, Sendable {
-    var template: String
-    var slots: JSONValue?
-    var function: String?
-}
-
-nonisolated struct SeedForm: Decodable, Sendable {
-    var form: String
-    var morph: String?
-}
-
-nonisolated struct SeedLink: Decodable, Sendable {
-    /// Key of the target element.
-    var to: String
-    var kind: ElementLinkKind
-}
-
-/// Free-form JSON, used for columns whose structure is not fixed yet (valency, slots).
-nonisolated enum JSONValue: Codable, Sendable, Equatable {
-    case null
-    case bool(Bool)
-    case number(Double)
-    case string(String)
-    case array([JSONValue])
-    case object([String: JSONValue])
-
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if container.decodeNil() {
-            self = .null
-        } else if let value = try? container.decode(Bool.self) {
-            self = .bool(value)
-        } else if let value = try? container.decode(Double.self) {
-            self = .number(value)
-        } else if let value = try? container.decode(String.self) {
-            self = .string(value)
-        } else if let value = try? container.decode([JSONValue].self) {
-            self = .array(value)
-        } else {
-            self = .object(try container.decode([String: JSONValue].self))
-        }
-    }
-
-    func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .null: try container.encodeNil()
-        case .bool(let value): try container.encode(value)
-        case .number(let value): try container.encode(value)
-        case .string(let value): try container.encode(value)
-        case .array(let value): try container.encode(value)
-        case .object(let value): try container.encode(value)
-        }
-    }
+/// Only the header, for checking whether a bundled seed is newer than the imported one.
+nonisolated struct SeedHeaderOnly: Decodable, Sendable {
+    var seed: SeedHeader
 }

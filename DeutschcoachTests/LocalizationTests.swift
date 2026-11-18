@@ -20,7 +20,7 @@ struct LocalizationTests {
         // The catalog's Chinese entry is used for zh; English keys show as is for en.
         #expect(try rendered("Practice", language: "zh") == render(Text(verbatim: "练习")))
         #expect(try rendered("Practice", language: "en") == render(Text(verbatim: "Practice")))
-        #expect(try rendered(SentenceMode.recall.displayName, language: "zh") == render(Text(verbatim: "回忆")))
+        #expect(try rendered(SentenceMode.recall.displayName, language: "zh") == render(Text(verbatim: "翻译")))
     }
 
     @Test func catalogHasAChineseValueForEveryKey() throws {

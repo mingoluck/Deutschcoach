@@ -70,7 +70,7 @@ private struct GeneralSettingsView: View {
                         Text(language.name).tag(language.code)
                     }
                 }
-                Text("Changing it discards the current batch and generates a new one.")
+                Text("Translations and the interface follow this language.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -80,11 +80,11 @@ private struct GeneralSettingsView: View {
                     get: { model.userLevel },
                     set: { level in Task { await model.setUserLevel(level) } }
                 )) {
-                    ForEach(CEFRLevel.allCases, id: \.self) { level in
+                    ForEach(CEFRLevel.practiceLevels, id: \.self) { level in
                         Text(verbatim: level.rawValue).tag(level)
                     }
                 }
-                Text("Sentences use elements up to this level. The next batch is generated at the new level.")
+                Text("Practice uses only the sentences of this level. The next session uses the new level.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

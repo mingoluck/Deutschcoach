@@ -3,101 +3,13 @@ import Synchronization
 import Testing
 @testable import Deutschcoach
 
-// MARK: - Request and schema
-
-struct GenerationRequestTests {
-    @Test func encodesTheDesignShape() throws {
-        let request = GenerationRequest(nativeLang: "zh", userLevel: .a2, sentences: [
-            SentenceRequest(position: 1, mode: .shadow, targets: [
-                GenerationTarget(elementId: 101, kind: .vocab, title: "geben"),
-                GenerationTarget(elementId: 102, kind: .vocab, title: "die Bank", sense: "Sitzmöbel"),
-            ]),
-        ])
-        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as! [String: Any]
-        #expect(object["native_lang"] as? String == "zh")
-        #expect(object["user_level"] as? String == "A2")
-        let sentence = (object["sentences"] as! [[String: Any]])[0]
-        #expect(sentence["position"] as? Int == 1)
-        #expect(sentence["mode"] as? String == "shadow")
-        let targets = sentence["targets"] as! [[String: Any]]
-        #expect(Set(targets[0].keys) == ["element_id", "kind", "title"])  // sense omitted when nil
-        #expect(targets[1]["sense"] as? String == "Sitzmöbel")
-    }
-
-    @Test func requestBodyFollowsTheAPIRules() throws {
-        let model = ClaudeLanguageModel(client: ClaudeClient(apiKey: { "test" }))
-        let request = GenerationRequest(nativeLang: "zh", userLevel: .a1, sentences: [])
-        let body = try JSONSerialization.jsonObject(with: model.requestBody(for: request)) as! [String: Any]
-
-        #expect(body["model"] as? String == "claude-haiku-5-5")
-        #expect(body["max_tokens"] as? Int == 64_000)
-        #expect(body["stream"] as? Bool == true)
-        // No sampling parameters: they return a 400 on this model.
-        #expect(body["temperature"] == nil && body["top_p"] == nil && body["top_k"] == nil)
-        #expect((body["thinking"] as? [String: Any])?["type"] as? String == "adaptive")
-        #expect((body["output_config"] as? [String: Any])?["effort"] as? String == "medium")
-        let toolChoice = body["tool_choice"] as! [String: Any]
-        #expect(toolChoice["type"] as? String == "auto")
-        #expect(toolChoice["disable_parallel_tool_use"] as? Bool == true)
-
-        let system = (body["system"] as! [[String: Any]])[0]
-        #expect((system["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
-        let tool = (body["tools"] as! [[String: Any]])[0]
-        #expect(tool["name"] as? String == "submit_sentences")
-        #expect(tool["strict"] as? Bool == true)
-        // Would turn off the server's validation of the strict tool input.
-        #expect(tool["eager_input_streaming"] == nil)
-
-        let message = (body["messages"] as! [[String: Any]]).last!
-        #expect(message["role"] as? String == "user")
-        let text = ((message["content"] as! [[String: Any]])[0]["text"] as! String)
-        #expect(text.contains(#""native_lang":"zh""#))
-    }
-
-    @Test func cachedPrefixIsStable() throws {
-        let model = ClaudeLanguageModel(client: ClaudeClient(apiKey: { "test" }))
-        let a = GenerationRequest(nativeLang: "zh", userLevel: .a1, sentences: [])
-        let b = GenerationRequest(nativeLang: "zh", userLevel: .a2, sentences: [])
-        let first = try JSONSerialization.jsonObject(with: model.requestBody(for: a)) as! [String: Any]
-        let second = try JSONSerialization.jsonObject(with: model.requestBody(for: b)) as! [String: Any]
-        let tools = { (body: [String: Any]) in try JSONSerialization.data(withJSONObject: body["tools"]!, options: .sortedKeys) }
-        let system = { (body: [String: Any]) in try JSONSerialization.data(withJSONObject: body["system"]!, options: .sortedKeys) }
-        #expect(try tools(first) == tools(second))
-        #expect(try system(first) == system(second))
-    }
-
-    /// Strict tools need `additionalProperties: false` and every property required, on every object.
-    @Test func toolSchemaIsStrictCompatible() {
-        func check(_ schema: [String: Any], path: String) {
-            if schema["type"] as? String == "object" {
-                let properties = schema["properties"] as? [String: Any] ?? [:]
-                #expect(schema["additionalProperties"] as? Bool == false, "\(path)")
-                #expect(Set(schema["required"] as? [String] ?? []) == Set(properties.keys), "\(path)")
-                for (name, child) in properties {
-                    check(child as! [String: Any], path: "\(path).\(name)")
-                }
-            }
-            if let items = schema["items"] as? [String: Any] {
-                check(items, path: "\(path)[]")
-            }
-            for unsupported in ["minItems", "maxItems", "minLength", "maxLength", "minimum", "maximum"] {
-                #expect(schema[unsupported] == nil, "\(path) uses \(unsupported)")
-            }
-        }
-        check(GenerationPrompt.tool["input_schema"] as! [String: Any], path: "input")
-    }
-
-    @Test func systemPromptCarriesWordLimitsAndLabels() {
-        for (level, limit) in GenerationPrompt.wordLimits {
-            #expect(GenerationPrompt.system.contains("\(level.rawValue) \(limit)"))
-        }
-        for code in Constituent.allCases.map(\.rawValue) + ClauseKind.allCases.map(\.rawValue) + PartOfSpeech.allCases.map(\.rawValue) {
-            #expect(GenerationPrompt.system.contains(code), "\(code)")
-        }
-    }
-}
-
 // MARK: - Response parsing
+
+/// The sentence texts in the input of the `SSE.tool` call.
+private func parse(_ data: Data) throws -> [String] {
+    let (_, input) = try ClaudeLanguageModel.toolInput(in: data, tool: SSE.tool)
+    return (input["sentences"] as? [[String: Any]] ?? []).compactMap { $0["de"] as? String }
+}
 
 struct ResponseParsingTests {
     private func response(content: [[String: Any]], stopReason: String = "tool_use", extra: [String: Any] = [:]) throws -> Data {
@@ -112,48 +24,29 @@ struct ResponseParsingTests {
         return try JSONSerialization.data(withJSONObject: message)
     }
 
-    private let validEntry: [String: Any] = [
-        "position": 1, "de": "Ja.", "translation": "是。",
-        "words": [["Ja", "ja", "INTJ", ""], [".", "", "PUNCT", ""]],
-        "spans": [], "targets": [["element_id": 7, "tokens": [0]]],
-    ]
-
     @Test func readsToolCallAfterThinkingBlocks() throws {
         let data = try response(content: [
             ["type": "thinking", "thinking": "", "signature": "abc"],
-            ["type": "tool_use", "id": "toolu_1", "name": "submit_sentences", "input": ["sentences": [validEntry]]],
+            ["type": "tool_use", "id": "toolu_1", "name": SSE.tool, "input": ["sentences": [SSE.entry]]],
         ])
-        let parsed = try ClaudeLanguageModel.parse(data)
-        #expect(parsed.sentences.count == 1)
-        #expect(parsed.sentences[0].targets == [TargetTokens(elementId: 7, tokens: [0])])
-        #expect(parsed.usage == TokenUsage(input: 120, output: 900, cacheWrite: 3000, cacheRead: 0))
-    }
-
-    @Test func malformedEntryDoesNotSpoilTheOthers() throws {
-        var broken = validEntry
-        broken["position"] = 2
-        broken["words"] = "not an array"
-        let data = try response(content: [
-            ["type": "tool_use", "id": "toolu_1", "name": "submit_sentences", "input": ["sentences": [validEntry, broken]]],
-        ])
-        let parsed = try ClaudeLanguageModel.parse(data)
-        #expect(parsed.sentences.map(\.position) == [1])
-        #expect(parsed.malformed.map(\.position) == [2])
+        let (message, input) = try ClaudeLanguageModel.toolInput(in: data, tool: SSE.tool)
+        #expect((input["sentences"] as? [Any])?.count == 1)
+        #expect(ClaudeLanguageModel.usage(from: message) == TokenUsage(input: 120, output: 900, cacheWrite: 3000, cacheRead: 0))
     }
 
     @Test func refusal() throws {
         let data = try response(content: [], stopReason: "refusal", extra: ["stop_details": ["type": "refusal", "category": "general_harms"]])
-        #expect(throws: LLMError.refused("general_harms")) { try ClaudeLanguageModel.parse(data) }
+        #expect(throws: LLMError.refused("general_harms")) { try parse(data) }
     }
 
     @Test func truncatedOutput() throws {
         let data = try response(content: [["type": "thinking", "thinking": "", "signature": "x"]], stopReason: "max_tokens")
-        #expect(throws: LLMError.truncated) { try ClaudeLanguageModel.parse(data) }
+        #expect(throws: LLMError.truncated) { try parse(data) }
     }
 
     @Test func answerWithoutToolCall() throws {
         let data = try response(content: [["type": "text", "text": "Here you go"]], stopReason: "end_turn")
-        #expect(throws: LLMError.noToolCall(GenerationPrompt.toolName)) { try ClaudeLanguageModel.parse(data) }
+        #expect(throws: LLMError.noToolCall(SSE.tool)) { try parse(data) }
     }
 }
 
@@ -161,6 +54,8 @@ struct ResponseParsingTests {
 
 /// Server-sent events as the Messages API streams them.
 enum SSE {
+    static let tool = "submit_sentences"
+
     static func text(_ events: [[String: Any]]) -> String {
         events.map { event in
             let data = try! JSONSerialization.data(withJSONObject: event)
@@ -233,11 +128,9 @@ struct MessageStreamAssemblerTests {
         #expect(blocks.map { $0["type"] as! String } == ["thinking", "tool_use"])
         #expect(blocks[0]["signature"] as? String == "sig")
 
-        let parsed = try ClaudeLanguageModel.parse(data)
-        #expect(parsed.sentences.map(\.de) == ["Grüß dich."])
-        #expect(parsed.sentences[0].translation == "你好。")
+        #expect(try parse(data) == ["Grüß dich."])
         // Input and cache from message_start, output from message_delta.
-        #expect(parsed.usage == TokenUsage(input: 120, output: 900, cacheWrite: 3000, cacheRead: 0))
+        #expect(ClaudeLanguageModel.usage(from: message) == TokenUsage(input: 120, output: 900, cacheWrite: 3000, cacheRead: 0))
     }
 
     @Test func truncationIsReportedAsTruncation() throws {
@@ -245,7 +138,7 @@ struct MessageStreamAssemblerTests {
         var tool = SSE.toolUse(["sentences": [SSE.entry]])
         tool.removeLast(3)
         let data = try assemble([SSE.start] + SSE.thinking + tool + SSE.end("max_tokens", output: 64_000))
-        #expect(throws: LLMError.truncated) { try ClaudeLanguageModel.parse(data) }
+        #expect(throws: LLMError.truncated) { try parse(data) }
         #expect(ClaudeLanguageModel.summary(of: data).contains("stop_reason=max_tokens"))
     }
 
@@ -255,7 +148,7 @@ struct MessageStreamAssemblerTests {
             ["type": "message_stop"],
         ]
         let data = try assemble([SSE.start] + end)
-        #expect(throws: LLMError.refused("general_harms")) { try ClaudeLanguageModel.parse(data) }
+        #expect(throws: LLMError.refused("general_harms")) { try parse(data) }
     }
 
     @Test func streamWithoutMessageStopIsANetworkError() throws {
@@ -277,7 +170,7 @@ struct MessageStreamAssemblerTests {
     @Test func ignoresUnknownEvents() throws {
         let data = try assemble([SSE.start, ["type": "ping"], ["type": "something_new", "index": 9]]
             + SSE.toolUse(["sentences": [SSE.entry]]) + SSE.end("tool_use"))
-        #expect(try ClaudeLanguageModel.parse(data).sentences.count == 1)
+        #expect(try parse(data).count == 1)
     }
 
     @Test func textBlocksAreConcatenated() throws {
@@ -289,7 +182,7 @@ struct MessageStreamAssemblerTests {
         ] + SSE.end("end_turn"))
         let message = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         #expect((message["content"] as! [[String: Any]])[0]["text"] as? String == "Here you go")
-        #expect(throws: LLMError.noToolCall(GenerationPrompt.toolName)) { try ClaudeLanguageModel.parse(data) }
+        #expect(throws: LLMError.noToolCall(SSE.tool)) { try parse(data) }
     }
 }
 
@@ -395,7 +288,7 @@ struct ClaudeClientTests {
     @Test func streamingReturnsTheReassembledMessage() async throws {
         let client = client(replies: [.init(status: 200, headers: ["content-type": "text/event-stream"], body: streamed)])
         let data = try await client.sendStreaming(Data("{}".utf8))
-        #expect(try ClaudeLanguageModel.parse(data).sentences.map(\.de) == ["Grüß dich."])
+        #expect(try parse(data) == ["Grüß dich."])
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.value(forHTTPHeaderField: "x-api-key") == "sk-test")
     }

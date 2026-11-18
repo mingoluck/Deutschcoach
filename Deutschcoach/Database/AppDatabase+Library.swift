@@ -6,16 +6,14 @@ private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", cate
 
 /// What the Library settings page shows (DESIGN.md §6).
 nonisolated struct LibraryStats: Sendable, Equatable {
-    /// Active elements by kind and level.
-    var active: [ElementKind: [CEFRLevel: Int]] = [:]
-    var totalElements = 0
+    /// Active entries and sentences by level.
+    var entries: [CEFRLevel: Int] = [:]
+    var sentences: [CEFRLevel: Int] = [:]
     var practiceEvents = 0
-    var batches = 0
+    var sessions = 0
     var seeds: [SeedImport] = []
 
-    func activeCount(_ kind: ElementKind, _ level: CEFRLevel) -> Int {
-        active[kind]?[level] ?? 0
-    }
+    var totalSentences: Int { sentences.values.reduce(0, +) }
 }
 
 /// Clearing data (DESIGN.md §2.6).
@@ -26,22 +24,24 @@ nonisolated extension AppDatabase {
     func libraryStats() async throws -> LibraryStats {
         try await writer.read { db in
             var stats = LibraryStats()
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT kind, level, COUNT(*) AS n FROM element WHERE status = 'active' GROUP BY kind, level
-                """)
-            for row in rows {
-                guard let kind = ElementKind(rawValue: row["kind"]), let level = CEFRLevel(rawValue: row["level"]) else { continue }
-                stats.active[kind, default: [:]][level] = row["n"]
+            func counts(_ table: String) throws -> [CEFRLevel: Int] {
+                var result: [CEFRLevel: Int] = [:]
+                for row in try Row.fetchAll(db, sql: "SELECT level, COUNT(*) AS n FROM \(table) WHERE status = 'active' GROUP BY level") {
+                    guard let level = CEFRLevel(rawValue: row["level"]) else { continue }
+                    result[level] = row["n"]
+                }
+                return result
             }
-            stats.totalElements = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM element") ?? 0
+            stats.entries = try counts("entry")
+            stats.sentences = try counts("sentence")
             stats.practiceEvents = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM practice_event") ?? 0
-            stats.batches = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM batch") ?? 0
-            stats.seeds = try SeedImport.order(Column("imported_at").desc, Column("seed_id")).fetchAll(db)
+            stats.sessions = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM session") ?? 0
+            stats.seeds = try SeedImport.order(Column("seed_id")).fetchAll(db)
             return stats
         }
     }
 
-    /// Deletes the user layer: events, mastery and batches (sentences cascade). Content stays.
+    /// Deletes the user layer: events, progress and sessions (items cascade). Content stays.
     func clearPracticeRecords() async throws {
         try await writer.write { db in
             try Self.deleteUserLayer(db)
@@ -54,7 +54,7 @@ nonisolated extension AppDatabase {
     func resetAllData() async throws {
         try await writer.write { db in
             try Self.deleteUserLayer(db)
-            for table in ["element_link", "word_form", "vocab_detail", "grammar_detail", "pattern_detail", "element", "seed_import"] {
+            for table in ["sentence_entry", "sentence", "entry", "seed_import"] {
                 try db.execute(sql: "DELETE FROM \(table)")
             }
         }
@@ -62,7 +62,7 @@ nonisolated extension AppDatabase {
     }
 
     private static func deleteUserLayer(_ db: Database) throws {
-        for table in ["practice_event", "mastery", "sentence_element", "sentence", "batch"] {
+        for table in ["practice_event", "progress", "session_item", "session"] {
             try db.execute(sql: "DELETE FROM \(table)")
         }
     }

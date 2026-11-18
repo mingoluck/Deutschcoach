@@ -1,346 +1,152 @@
 import Foundation
 import GRDB
+import os
 
-/// Imports seed files into the content layer (DESIGN.md §2.5). Nothing is imported automatically:
-/// the user picks one or more files, sees a preview, and confirms.
+private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "seed")
+
+/// Imports seed files into the content layer (DESIGN.md §2.5).
 ///
-/// - `element` rows are upserted by `key` with `INSERT … ON CONFLICT(key) DO UPDATE`, so ids stay
-///   stable. Never use `INSERT OR REPLACE` here: it deletes the old row, changes its id and
-///   cascades the delete to dependent rows.
-/// - For each imported element, its detail rows, word forms and outgoing links are replaced.
-///   Links are resolved after all elements of all files are upserted, so files may link to each
-///   other.
-/// - Elements missing from the files are left untouched (user data references them). To take an
-///   element out of practice, re-import it with `"status": "retired"`.
-/// - Each file's header is recorded in `seed_import`. User-layer tables are never touched.
-nonisolated struct SeedImporter: Sendable {
+/// - Every file is validated first (§4.3); nothing is written when a file has problems.
+/// - `entry` and `sentence` rows are upserted by `key` with `INSERT … ON CONFLICT(key) DO UPDATE`,
+///   so ids stay stable. Never use `INSERT OR REPLACE` here: it deletes the old row, changes its
+///   id and cascades the delete to dependent rows.
+/// - Each imported sentence's `sentence_entry` rows are replaced; entry `parent` links are
+///   resolved after all entries are upserted.
+/// - Entries and sentences of the same seed that are missing from the file are retired, never
+///   deleted, because user data references them.
+/// - The header is recorded in `seed_import`. User-layer tables are never touched.
+nonisolated enum SeedImporter {
     struct Report: Sendable, Equatable {
-        var files = 0
-        var elements = 0
-        var wordForms = 0
-        var links = 0
+        var seedId: String
+        var version: Int
+        var entries = 0
+        var sentences = 0
+        var newSentences = 0
+        var retiredEntries = 0
+        var retiredSentences = 0
     }
 
-    enum SeedError: Error, LocalizedError, Equatable, Hashable {
-        case unreadable(file: String, reason: String)
-        case missingHeader(file: String)
-        case duplicateSeedId(String)
-        case duplicateKey(String)
-        case detailMismatch(key: String)
-        case unknownLinkTarget(from: String, to: String)
+    /// The file's problems; thrown as a whole so the caller can show all of them.
+    struct ValidationFailed: Error, LocalizedError, Sendable {
+        var issues: [SeedIssue]
 
         var errorDescription: String? {
-            switch self {
-            case .unreadable(let file, let reason): "\(file) cannot be read: \(reason)"
-            case .missingHeader(let file): "\(file) has no \"seed\" header (id, title, version)."
-            case .duplicateSeedId(let id): "Seed id \(id) is used by more than one selected file."
-            case .duplicateKey(let key): "Element key \(key) appears more than once in the selected files."
-            case .detailMismatch(let key): "Element \(key) must have exactly the detail matching its kind."
-            case .unknownLinkTarget(let from, let to): "Element \(from) links to \(to), which is neither in the selected files nor in the database."
-            }
+            let shown = issues.prefix(5).map(\.localizedDescription)
+            let more = issues.count > shown.count ? ["… and \(issues.count - shown.count) more"] : []
+            return (shown + more).joined(separator: "\n")
         }
-    }
-
-    /// A decoded seed file and the name of the file it came from.
-    struct Source: Sendable {
-        var name: String
-        var file: SeedFile
-    }
-
-    /// What an import would do; nothing is written (§2.5 step 1).
-    struct Preview: Sendable {
-        struct FileSummary: Sendable, Identifiable {
-            var name: String
-            var header: SeedHeader?
-            var elements: Int
-            var new: Int
-            var updated: Int
-
-            var id: String { name }
-        }
-
-        var files: [FileSummary] = []
-        var issues: [SeedError] = []
-        /// The decoded files, imported as they are when the user confirms.
-        var sources: [Source] = []
-
-        var canImport: Bool { issues.isEmpty && !sources.isEmpty }
     }
 
     static func decode(_ data: Data) throws -> SeedFile {
         try JSONDecoder().decode(SeedFile.self, from: data)
     }
 
-    /// Reads and decodes files picked by the user. Files that fail are reported, not thrown.
-    static func load(urls: [URL]) -> (sources: [Source], issues: [SeedError]) {
-        var sources: [Source] = []
-        var issues: [SeedError] = []
-        for url in urls {
-            let name = url.lastPathComponent
-            // Files from the open panel are outside the sandbox container.
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            do {
-                sources.append(Source(name: name, file: try decode(Data(contentsOf: url))))
-            } catch let error as DecodingError {
-                issues.append(.unreadable(file: name, reason: describe(error)))
-            } catch {
-                issues.append(.unreadable(file: name, reason: error.localizedDescription))
-            }
+    /// Validates `file` and checks that its keys are not owned by another seed in the database.
+    static func problems(of file: SeedFile, in db: Database) throws -> [SeedIssue] {
+        var issues = SeedValidator.validate(file)
+        let seedId = file.seed.id
+        let foreignEntries = try String.fetchSet(db, sql: "SELECT key FROM entry WHERE seed_id != ?", arguments: [seedId])
+        let foreignSentences = try String.fetchSet(db, sql: "SELECT key FROM sentence WHERE seed_id != ?", arguments: [seedId])
+        for entry in file.entries where foreignEntries.contains(entry.key) {
+            issues.append(SeedIssue(seed: seedId, key: entry.key, message: "the key belongs to another seed"))
         }
-        return (sources, issues)
-    }
-
-    /// Checks `sources` against the database and counts new and updated elements.
-    static func preview(_ sources: [Source], loadIssues: [SeedError] = [], database: AppDatabase) async throws -> Preview {
-        let existing = try await database.writer.read { db in try existingKeys(db) }
-        var preview = Preview(issues: loadIssues, sources: sources)
-        preview.issues += validate(sources, existingKeys: existing)
-        for source in sources {
-            let new = source.file.elements.filter { !existing.contains($0.key) }.count
-            preview.files.append(.init(
-                name: source.name,
-                header: source.file.seed,
-                elements: source.file.elements.count,
-                new: new,
-                updated: source.file.elements.count - new
-            ))
-        }
-        return preview
-    }
-
-    /// Imports `sources` in a single transaction; any validation issue aborts it.
-    @discardableResult
-    static func importSeeds(_ sources: [Source], into database: AppDatabase, now: Date = Date()) async throws -> Report {
-        try await database.writer.write { db in
-            if let issue = validate(sources, existingKeys: try existingKeys(db)).first { throw issue }
-            return try importSeeds(sources, at: Int64(now.timeIntervalSince1970), in: db)
-        }
-    }
-
-    /// Imports one file (tests and tools).
-    @discardableResult
-    static func importSeed(_ seed: SeedFile, into database: AppDatabase) async throws -> Report {
-        try await importSeeds([Source(name: seed.seed?.id ?? "seed", file: seed)], into: database)
-    }
-
-    // MARK: - Validation
-
-    /// All problems that block importing `sources` together (§2.5 step 1).
-    static func validate(_ sources: [Source], existingKeys: Set<String>) -> [SeedError] {
-        var issues: [SeedError] = []
-        func report(_ issue: SeedError) {
-            if !issues.contains(issue) { issues.append(issue) }
-        }
-
-        var seedIds = Set<String>()
-        var keys = Set<String>()
-        for source in sources {
-            if let header = source.file.seed {
-                if !seedIds.insert(header.id).inserted { report(.duplicateSeedId(header.id)) }
-            } else {
-                report(.missingHeader(file: source.name))
-            }
-            for element in source.file.elements {
-                if !keys.insert(element.key).inserted { report(.duplicateKey(element.key)) }
-                let details = [element.vocab != nil, element.grammar != nil, element.pattern != nil]
-                let expected: Int = switch element.kind {
-                case .vocab: 0
-                case .grammar: 1
-                case .pattern: 2
-                }
-                if details.filter({ $0 }).count != 1 || !details[expected] {
-                    report(.detailMismatch(key: element.key))
-                }
-            }
-        }
-        for source in sources {
-            for element in source.file.elements {
-                for link in element.links ?? [] where !keys.contains(link.to) && !existingKeys.contains(link.to) {
-                    report(.unknownLinkTarget(from: element.key, to: link.to))
-                }
-            }
+        for sentence in file.sentences where foreignSentences.contains(sentence.key) {
+            issues.append(SeedIssue(seed: seedId, key: sentence.key, message: "the key belongs to another seed"))
         }
         return issues
     }
 
-    private static func existingKeys(_ db: Database) throws -> Set<String> {
-        try String.fetchSet(db, sql: "SELECT key FROM element")
-    }
-
-    private static func describe(_ error: DecodingError) -> String {
-        func path(_ context: DecodingError.Context) -> String {
-            context.codingPath.map { $0.intValue.map { "[\($0)]" } ?? ".\($0.stringValue)" }.joined()
+    /// Validates and imports one seed file in a single transaction.
+    @discardableResult
+    static func importSeed(_ file: SeedFile, origin: SeedOrigin, into database: AppDatabase, now: Date = Date()) async throws -> Report {
+        let report = try await database.writer.write { db in
+            let issues = try problems(of: file, in: db)
+            guard issues.isEmpty else { throw ValidationFailed(issues: issues) }
+            return try write(file, origin: origin, db: db, now: Int64(now.timeIntervalSince1970))
         }
-        switch error {
-        case .keyNotFound(let key, let context): return "missing \"\(key.stringValue)\" at \(path(context))"
-        case .typeMismatch(_, let context), .valueNotFound(_, let context): return "\(context.debugDescription) at \(path(context))"
-        case .dataCorrupted(let context): return "\(context.debugDescription) \(path(context))"
-        @unknown default: return error.localizedDescription
-        }
-    }
-
-    // MARK: - Import
-
-    private static func importSeeds(_ sources: [Source], at timestamp: Int64, in db: Database) throws -> Report {
-        var report = Report()
-        var idsByKey: [String: Int64] = [:]
-        let elements = sources.flatMap(\.file.elements)
-
-        // Pass 1: elements and their details.
-        for element in elements {
-            let id = try upsertElement(element, in: db)
-            idsByKey[element.key] = id
-            report.elements += 1
-
-            for table in ["vocab_detail", "grammar_detail", "pattern_detail"] {
-                try db.execute(sql: "DELETE FROM \(table) WHERE element_id = ?", arguments: [id])
-            }
-            if let vocab = element.vocab {
-                try VocabDetail(
-                    elementId: id,
-                    lemma: vocab.lemma,
-                    pos: vocab.pos,
-                    gender: vocab.gender,
-                    plural: vocab.plural,
-                    verbForms: try vocab.verbForms.map(jsonText),
-                    valency: try vocab.valency.map(jsonText),
-                    unitType: vocab.unitType ?? "word",
-                    sense: vocab.sense
-                ).insert(db)
-            }
-            if let grammar = element.grammar {
-                try GrammarDetail(
-                    elementId: id,
-                    category: grammar.category,
-                    annotationLabels: try grammar.annotationLabels.map(jsonText)
-                ).insert(db)
-            }
-            if let pattern = element.pattern {
-                try PatternDetail(
-                    elementId: id,
-                    template: pattern.template,
-                    slots: try pattern.slots.map(jsonText),
-                    function: pattern.function
-                ).insert(db)
-            }
-
-            try db.execute(sql: "DELETE FROM word_form WHERE element_id = ?", arguments: [id])
-            for form in wordForms(for: element) {
-                try WordForm(form: form.form, elementId: id, morph: form.morph).insert(db)
-                report.wordForms += 1
-            }
-        }
-
-        // Pass 2: links (targets may be in another file, or exist from earlier imports).
-        for element in elements {
-            let fromId = idsByKey[element.key]!
-            try db.execute(sql: "DELETE FROM element_link WHERE from_id = ?", arguments: [fromId])
-            for link in element.links ?? [] {
-                let toId: Int64
-                if let id = idsByKey[link.to] {
-                    toId = id
-                } else if let id = try Int64.fetchOne(db, sql: "SELECT id FROM element WHERE key = ?", arguments: [link.to]) {
-                    toId = id
-                } else {
-                    throw SeedError.unknownLinkTarget(from: element.key, to: link.to)
-                }
-                try ElementLink(fromId: fromId, toId: toId, kind: link.kind).insert(db, onConflict: .ignore)
-                report.links += 1
-            }
-        }
-
-        // Pass 3: the record of imported files.
-        for source in sources {
-            guard let header = source.file.seed else { continue }
-            try db.execute(sql: """
-                INSERT INTO seed_import (seed_id, title, version, element_count, imported_at)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(seed_id) DO UPDATE SET
-                  title = excluded.title,
-                  version = excluded.version,
-                  element_count = excluded.element_count,
-                  imported_at = excluded.imported_at
-                """, arguments: [header.id, header.title, header.version, source.file.elements.count, timestamp])
-            report.files += 1
-        }
+        logger.info("""
+            Imported \(report.seedId, privacy: .public) v\(report.version): \(report.entries) entries, \
+            \(report.sentences) sentences (\(report.newSentences) new), retired \(report.retiredEntries) entries \
+            and \(report.retiredSentences) sentences
+            """)
         return report
     }
 
-    private static func upsertElement(_ element: SeedElement, in db: Database) throws -> Int64 {
-        try Int64.fetchOne(db, sql: """
-            INSERT INTO element (key, kind, level, title, freq_rank, status, level_src, reviewed, targetable)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-              kind = excluded.kind,
-              level = excluded.level,
-              title = excluded.title,
-              freq_rank = excluded.freq_rank,
-              status = excluded.status,
-              level_src = excluded.level_src,
-              reviewed = excluded.reviewed,
-              targetable = excluded.targetable
-            RETURNING id
-            """, arguments: [
-                element.key,
-                element.kind.rawValue,
-                element.level.rawValue,
-                element.title,
-                element.freqRank,
-                (element.status ?? .active).rawValue,
-                element.levelSrc ?? "import",
-                element.reviewed ?? false,
-                element.targetable ?? true,
-            ])!
-    }
-
-    // MARK: - Word forms
-
-    /// All forms of an element: lemma, plural and verb forms derived from the vocab detail, plus the
-    /// explicit `forms` list. A form that occurs several times gets its morph labels joined by ",".
-    static func wordForms(for element: SeedElement) -> [SeedForm] {
-        var ordered: [String] = []
-        var morphs: [String: [String]] = [:]
-
-        func add(_ form: String?, _ morph: String?) {
-            guard let form, !form.isEmpty else { return }
-            if morphs[form] == nil {
-                ordered.append(form)
-                morphs[form] = []
-            }
-            if let morph, !morph.isEmpty, !morphs[form]!.contains(morph) {
-                morphs[form]!.append(morph)
-            }
-        }
-
-        if let vocab = element.vocab {
-            add(vocab.lemma, vocab.verbForms == nil ? nil : "Inf")
-            add(vocab.plural, "Plur")
-            if let verb = vocab.verbForms {
-                for person in persons {
-                    add(verb.praesens?[person], "Pres.\(person)")
-                }
-                for person in persons {
-                    add(verb.praeteritum?[person], "Past.\(person)")
-                }
-                add(verb.partizip2, "Part2")
-            }
-        }
-        for form in element.forms ?? [] {
-            add(form.form, form.morph)
-        }
-
-        return ordered.map { form in
-            let joined = morphs[form]!.joined(separator: ",")
-            return SeedForm(form: form, morph: joined.isEmpty ? nil : joined)
-        }
-    }
-
-    private static let persons = ["ich", "du", "er", "wir", "ihr", "sie"]
-
-    private static func jsonText(_ value: some Encodable) throws -> String {
+    private static func write(_ file: SeedFile, origin: SeedOrigin, db: Database, now: Int64) throws -> Report {
+        let header = file.seed
+        var report = Report(seedId: header.id, version: header.version, entries: file.entries.count, sentences: file.sentences.count)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return String(decoding: try encoder.encode(value), as: UTF8.self)
+        func json(_ value: some Encodable) throws -> String {
+            String(decoding: try encoder.encode(value), as: UTF8.self)
+        }
+
+        // Entries
+        let upsertEntry = try db.cachedStatement(sql: """
+            INSERT INTO entry (key, seed_id, level, headword, lemma, pos, gender, grp, region, parent_id, sort, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'active')
+            ON CONFLICT(key) DO UPDATE SET
+              seed_id = excluded.seed_id, level = excluded.level, headword = excluded.headword,
+              lemma = excluded.lemma, pos = excluded.pos, gender = excluded.gender, grp = excluded.grp,
+              region = excluded.region, parent_id = NULL, sort = excluded.sort, status = 'active'
+            """)
+        for (sort, entry) in file.entries.enumerated() {
+            try upsertEntry.execute(arguments: [
+                entry.key, header.id, header.level.rawValue, entry.headword, entry.lemma, entry.pos,
+                entry.gender, entry.group, entry.region?.rawValue, sort,
+            ])
+        }
+        var entryIds: [String: Int64] = [:]
+        for row in try Row.fetchAll(db, sql: "SELECT key, id FROM entry WHERE seed_id = ?", arguments: [header.id]) {
+            entryIds[row["key"]] = row["id"]
+        }
+        let setParent = try db.cachedStatement(sql: "UPDATE entry SET parent_id = ? WHERE id = ?")
+        for entry in file.entries {
+            guard let parent = entry.parent, let parentId = entryIds[parent], let id = entryIds[entry.key] else { continue }
+            try setParent.execute(arguments: [parentId, id])
+        }
+        let entryKeys = Set(file.entries.map(\.key))
+        for (key, id) in entryIds where !entryKeys.contains(key) {
+            try db.execute(sql: "UPDATE entry SET status = 'retired' WHERE id = ? AND status != 'retired'", arguments: [id])
+            report.retiredEntries += db.changesCount
+        }
+
+        // Sentences
+        let existing = try String.fetchSet(db, sql: "SELECT key FROM sentence WHERE seed_id = ?", arguments: [header.id])
+        let upsertSentence = try db.cachedStatement(sql: """
+            INSERT INTO sentence (key, seed_id, level, source, de, spoken, translations, annotation, sort, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+            ON CONFLICT(key) DO UPDATE SET
+              seed_id = excluded.seed_id, level = excluded.level, source = excluded.source, de = excluded.de,
+              spoken = excluded.spoken, translations = excluded.translations, annotation = excluded.annotation,
+              sort = excluded.sort, status = 'active'
+            RETURNING id
+            """)
+        let deleteLinks = try db.cachedStatement(sql: "DELETE FROM sentence_entry WHERE sentence_id = ?")
+        let insertLink = try db.cachedStatement(sql: "INSERT INTO sentence_entry (sentence_id, entry_id, tokens) VALUES (?, ?, ?)")
+        for (sort, sentence) in file.sentences.enumerated() {
+            if !existing.contains(sentence.key) { report.newSentences += 1 }
+            let id = try Int64.fetchOne(upsertSentence, arguments: [
+                sentence.key, header.id, header.level.rawValue, sentence.source.rawValue, sentence.de, sentence.spoken,
+                try json(sentence.translations), try json(sentence.annotation), sort,
+            ])
+            guard let id else { throw DatabaseError(message: "upsert of sentence \(sentence.key) returned no id") }
+            try deleteLinks.execute(arguments: [id])
+            for link in sentence.entries {
+                guard let entryId = entryIds[link.key] else { continue }  // validated: cannot happen
+                try insertLink.execute(arguments: [id, entryId, try json(link.tokens)])
+            }
+        }
+        let sentenceKeys = Set(file.sentences.map(\.key))
+        for key in existing where !sentenceKeys.contains(key) {
+            try db.execute(sql: "UPDATE sentence SET status = 'retired' WHERE key = ? AND status != 'retired'", arguments: [key])
+            report.retiredSentences += db.changesCount
+        }
+
+        try SeedImport(
+            seedId: header.id, title: header.title, level: header.level, version: header.version, origin: origin,
+            entryCount: file.entries.count, sentenceCount: file.sentences.count, importedAt: now
+        ).upsert(db)
+        return report
     }
 }

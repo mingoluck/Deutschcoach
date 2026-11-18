@@ -3,89 +3,18 @@ import GRDB
 
 // User-layer records (DESIGN.md §2.2). JSON columns are kept as JSON text.
 
-nonisolated enum BatchStatus: String, Codable, Sendable {
-    case generating, ready, active, done
-}
-
 nonisolated enum SentenceMode: String, Codable, Sendable, CaseIterable {
-    case shadow, cloze, recall
+    case shadow, cloze
+    /// UI name “翻译” (Translation); the code is kept from version 0.1.
+    case recall
 }
 
-nonisolated enum SentenceStatus: String, Codable, Sendable {
+nonisolated enum ItemStatus: String, Codable, Sendable {
     case pending, done, skipped
 }
 
-nonisolated enum SentenceElementRole: String, Codable, Sendable {
-    case target, incidental
-}
-
-nonisolated struct Batch: Codable, Sendable, Equatable, FetchableRecord, MutablePersistableRecord {
-    static let databaseTableName = "batch"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var id: Int64?
-    var status: BatchStatus
-    var nativeLang: String
-    var model: String?
-    /// Unix time in seconds.
-    var createdAt: Int64
-    var startedAt: Int64?
-    var finishedAt: Int64?
-
-    mutating func didInsert(_ inserted: InsertionSuccess) {
-        id = inserted.rowID
-    }
-}
-
-nonisolated struct Sentence: Codable, Sendable, Equatable, FetchableRecord, MutablePersistableRecord {
-    static let databaseTableName = "sentence"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var id: Int64?
-    var batchId: Int64
-    var position: Int
-    var mode: SentenceMode
-    var status: SentenceStatus
-    var de: String
-    /// JSON object: language code → translation, e.g. `{"zh": "…"}`.
-    var translations: String
-    /// JSON `{"words": [...], "spans": [...]}`.
-    var annotation: String?
-    /// JSON array of token indices.
-    var blanks: String?
-    var model: String?
-    var createdAt: Int64?
-    var flagged: Bool
-
-    mutating func didInsert(_ inserted: InsertionSuccess) {
-        id = inserted.rowID
-    }
-
-    func decodedAnnotation() throws -> SentenceAnnotation? {
-        guard let annotation else { return nil }
-        return try JSONDecoder().decode(SentenceAnnotation.self, from: Data(annotation.utf8))
-    }
-
-    func translation(for language: String) -> String? {
-        guard let dictionary = try? JSONDecoder().decode([String: String].self, from: Data(translations.utf8)) else {
-            return nil
-        }
-        return dictionary[language]
-    }
-}
-
-nonisolated struct SentenceElement: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "sentence_element"
-    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
-    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
-
-    var sentenceId: Int64
-    var elementId: Int64
-    var role: SentenceElementRole
-    /// JSON array of token indices.
-    var tokens: String?
+nonisolated enum SessionStatus: String, Codable, Sendable {
+    case active, done
 }
 
 nonisolated enum MasteryDimension: String, Codable, Sendable, CaseIterable {
@@ -97,20 +26,20 @@ nonisolated enum PracticeOutcome: String, Codable, Sendable {
     case notAttempted = "not_attempted"
 }
 
-/// A missing row means level 1, never seen (DESIGN.md §2.4).
-nonisolated struct Mastery: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "mastery"
+/// Per-sentence mastery. A missing row means level 1, never seen (DESIGN.md §3.5).
+nonisolated struct Progress: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "progress"
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
     static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
 
-    var elementId: Int64
+    var sentenceId: Int64
     var dimension: MasteryDimension
     var level: Int
     /// Unix time in seconds.
     var lastSeenAt: Int64?
 }
 
-/// Append-only (DESIGN.md §2.2). `sentence_id` has no foreign key so events survive pruning.
+/// Append-only (DESIGN.md §2.2). `session_id` has no foreign key so events survive pruning.
 nonisolated struct PracticeEvent: Codable, Sendable, Equatable, FetchableRecord, MutablePersistableRecord {
     static let databaseTableName = "practice_event"
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
@@ -119,8 +48,8 @@ nonisolated struct PracticeEvent: Codable, Sendable, Equatable, FetchableRecord,
     var id: Int64?
     /// Unix time in seconds.
     var ts: Int64
-    var sentenceId: Int64?
-    var elementId: Int64
+    var sessionId: Int64?
+    var sentenceId: Int64
     var dimension: MasteryDimension
     var mode: SentenceMode
     var outcome: PracticeOutcome
@@ -132,12 +61,10 @@ nonisolated struct PracticeEvent: Codable, Sendable, Equatable, FetchableRecord,
     }
 }
 
-/// Why an element was not attempted (DESIGN.md §2.2 `practice_event.detail`).
+/// Why a sentence was not attempted.
 nonisolated enum NotAttemptedReason: String, Codable, Sendable {
     case skipped
     case noSpeech = "no_speech"
-    case paraphrase
-    case unclear
 }
 
 /// The `detail` column of `practice_event`.
@@ -146,5 +73,37 @@ nonisolated struct PracticeEventDetail: Codable, Sendable, Equatable {
     var heard: String?
     var engine: String?
     var reason: NotAttemptedReason?
-    var judge: JudgeVerdict?
+    /// Token indices of the sentence that did not match.
+    var mismatched: [Int]?
+}
+
+nonisolated struct Session: Codable, Sendable, Equatable, FetchableRecord, MutablePersistableRecord {
+    static let databaseTableName = "session"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+
+    var id: Int64?
+    var level: CEFRLevel
+    var status: SessionStatus
+    /// Unix time in seconds.
+    var createdAt: Int64
+    var finishedAt: Int64?
+
+    mutating func didInsert(_ inserted: InsertionSuccess) {
+        id = inserted.rowID
+    }
+}
+
+nonisolated struct SessionItem: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "session_item"
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+
+    var sessionId: Int64
+    /// 1–10.
+    var position: Int
+    var sentenceId: Int64
+    var mode: SentenceMode
+    var blankEntryId: Int64?
+    var status: ItemStatus
 }

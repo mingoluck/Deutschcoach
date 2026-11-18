@@ -62,7 +62,6 @@
         "ENABLE_OUTGOING_NETWORK_CONNECTIONS": "YES",
         "ENABLE_PREVIEWS": "YES",
         "ENABLE_RESOURCE_ACCESS_AUDIO_INPUT": "YES",
-        "ENABLE_USER_SELECTED_FILES": "readonly",
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_KEY_NSHumanReadableCopyright": "",
         "INFOPLIST_KEY_NSMicrophoneUsageDescription": "Deutschcoach 需要使用麦克风录下你说的德语，用于识别和判分。录音不会被保存。",
