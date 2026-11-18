@@ -144,6 +144,8 @@ struct SeedValidatorTests {
         #expect(SeedValidator.lemma("Auf Wiedersehen", matches: ["auf", "Wiedersehen"]))
         #expect(SeedValidator.lemma("Luft", matches: ["Seeluft"]))
         #expect(SeedValidator.lemma("Lehrer", matches: ["Lehrerin"]))
+        #expect(SeedValidator.lemma("Arzt", matches: ["Ärztin"]))
+        #expect(SeedValidator.lemma("Beamte", matches: ["Beamtin"]))
         #expect(!SeedValidator.lemma("gehen", matches: ["fahren"]))
     }
 

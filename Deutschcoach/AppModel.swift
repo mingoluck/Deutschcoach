@@ -37,7 +37,9 @@ final class AppModel {
     }
 
     func start() async {
-        guard database == nil else { return }
+        // The app is the test host: tests use their own in-memory databases and must not
+        // migrate or import into the real one.
+        guard database == nil, !Self.isRunningTests else { return }
         do {
             let database = try AppDatabase.openShared()
             self.database = database

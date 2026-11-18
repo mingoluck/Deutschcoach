@@ -345,22 +345,26 @@ The seeds are produced in Claude Code sessions, not by the app and not by API ca
 | Digits, abbreviations with a period | `um 15.30 Uhr`, `20.000`, `z. B.` | Not treated as sentence ends; `spoken` written out in words |
 | Slash alternatives, optional parts | `Club/Klub`, `ihr/ihm`, `mein (Ehe-) Mann/meine (Ehe-) Frau` | The first alternative becomes the sentence; optional parts in parentheses are dropped; `orig` keeps the source text |
 | Fragments and placeholders | `Also, die Sache ist so: …`, `Morgen schwimmen ... ist ein guter Plan.` | Skipped and reported |
-| Errors in the source | `Mit tut der Magen weh.` | Skipped and reported; never silently corrected |
+| Conversion (OCR) errors with exactly one possible correction | `SInd Sie Ausländerin?`, `WiIlst du …`, plural `-Ä` | Corrected; `orig` keeps the source text; listed in the report's “Corrected” section |
+| Other errors in the source | `Mit tut der Magen weh.` | Skipped and reported; never corrected |
+| Merged rows (two headwords and their examples in one row) | `an sein antworten` | Split into separate entries, each with its own examples |
 | Regional variants | `parkieren (CH)`, `die Stiege (A)` | Kept, marked with `region` |
 | The same sentence under several entries | | Stored once, linked to all entries |
 
 When in doubt, a sentence is skipped and reported rather than changed.
 
+The report also has a “Corrected” section listing every corrected sentence or headword with its source text.
+
 ### 4.3 Checking
 
 Every sentence goes through two checks before it is written to a seed:
 
-1. **Review**: after a batch is translated and annotated, it is reviewed again in the session, sentence by sentence: is the German sentence correct and complete, do both translations match it, does the annotation follow Section 5 (POS, case, verb form, gender, constituents)? Problems that cannot be fixed with certainty are skipped and reported.
+1. **Review**: after a batch is translated and annotated, a separate subagent reviews it, sentence by sentence, without changing it; the session then fixes or skips what it reports. It checks: is the German sentence correct and complete, do both translations match it, does the annotation follow Section 5 (POS, case, verb form, gender, constituents)? Problems that cannot be fixed with certainty are skipped and reported.
 2. **Validation** (mechanical: `SeedValidator`, the same code as the import validation in §2.5, run as a unit test over the bundled seeds):
    - all fields present; keys unique and well-formed; entry references resolve;
    - concatenating the forms of `words` reproduces `de`; each row has 4 or 5 items; item 5 only on `NOUN`;
    - all labels are in the label set (§5), and item 4 fits the POS: a case for `NOUN`, `PROPN`, `PRON`, `DET`, `ADP`; a verb form for `VERB`, `AUX`; a case or empty for `ADJ`; empty otherwise; all token indices in range; punctuation in no span;
-   - every sentence links at least one entry; each entry's tokens are non-empty and carry the entry's lemma: the tokens' lemmas in order (repeats merged, so both parts of a separable verb count once) equal it, or one of them contains it (compounds and feminine forms: `Seeluft` for `Luft`, `Lehrerin` for `Lehrer`); case is ignored;
+   - every sentence links at least one entry; each entry's tokens are non-empty and carry the entry's lemma: the tokens' lemmas in order (repeats merged, so both parts of a separable verb count once) equal it, or one of them contains it (compounds and feminine forms: `Seeluft` for `Luft`, `Lehrerin` for `Lehrer`; for this containment umlauts and a final -e of the entry's lemma are ignored: `Ärztin` for `Arzt`, `Beamtin` for `Beamte`); case is ignored;
    - `spoken` is present when `de` contains a digit, and contains no digits;
    - `zh` contains Chinese characters; `en` contains none;
    - word count within a lenient limit (about 30).
@@ -369,7 +373,7 @@ Every sentence goes through two checks before it is written to a seed:
 
 ### 4.4 Word Groups (Wortgruppen)
 
-The word-group pages (numbers, weekdays, months, colors, professions, abbreviations, …) have no example sentences. Each item becomes an entry with `group` set, and Claude writes one simple, natural sentence for it at the list's level (`source = 'generated'`), within the word limit of the level (A1 ≤ 8, A2 ≤ 12, B1 ≤ 16 words, punctuation not counted), using only common words of that level or below. Items that are already entries of the alphabetical list of the same level get no second sentence. Generated sentences go through the same review and validation.
+The word-group pages (numbers, weekdays, months, colors, professions, abbreviations, …) have no example sentences. Each item becomes an entry with `group` set, and Claude writes one simple, natural sentence for it at the list's level (`source = 'generated'`), within the word limit of the level (A1 ≤ 8, A2 ≤ 12, B1 ≤ 16 words, punctuation not counted), using only common words of that level or below. Items that are already entries of the alphabetical list of the same level get no second sentence. Items that are readings rather than words (dates and clock times: `halb drei`, `Viertel nach zwei`, years, ordinal dates) become phrase entries (e.g. *halb* with clock times, *Viertel vor/nach*), one sentence each. Generated sentences write numbers in words, so they need no `spoken`. They go through the same review and validation.
 
 ### 4.5 Workflow
 

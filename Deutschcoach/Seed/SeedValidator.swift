@@ -159,7 +159,8 @@ nonisolated enum SeedValidator {
     }
 
     /// The entry's lemma is the tokens' lemma (a separable verb gives it on both parts), the
-    /// lemmas of a phrase in order, or part of a compound or feminine form (`Seeluft`, `Lehrerin`).
+    /// lemmas of a phrase in order, or part of a compound or feminine form (`Seeluft`, `Lehrerin`;
+    /// umlauts and a final -e are ignored here: `Ärztin` for `Arzt`, `Beamtin` for `Beamte`).
     static func lemma(_ lemma: String, matches tokenLemmas: [String]) -> Bool {
         let target = lemma.lowercased()
         var distinct: [String] = []
@@ -167,7 +168,14 @@ nonisolated enum SeedValidator {
             distinct.append(token)
         }
         if distinct.joined(separator: " ") == target { return true }
-        return distinct.contains { $0.contains(target) }
+        var stem = fold(target)
+        if stem.count > 3, stem.hasSuffix("e") { stem.removeLast() }
+        return distinct.contains { fold($0).contains(stem) }
+    }
+
+    private static func fold(_ text: String) -> String {
+        text.replacingOccurrences(of: "ä", with: "a").replacingOccurrences(of: "ö", with: "o")
+            .replacingOccurrences(of: "ü", with: "u")
     }
 
     /// `<level>.<name>` followed by `numberedParts` numeric segments, e.g. `a1.abfahren`,
