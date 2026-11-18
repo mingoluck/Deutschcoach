@@ -348,6 +348,8 @@ The seeds are produced in Claude Code sessions, not by the app and not by API ca
 | Conversion (OCR) errors with exactly one possible correction | `SInd Sie Ausländerin?`, `WiIlst du …`, plural `-Ä` | Corrected; `orig` keeps the source text; listed in the report's “Corrected” section |
 | Other errors in the source | `Mit tut der Magen weh.` | Skipped and reported; never corrected |
 | Merged rows (two headwords and their examples in one row) | `an sein antworten` | Split into separate entries, each with its own examples |
+| A headword wrapped over two rows | `anbieten, bietet an,` + `hat angeboten` | Joined into one entry with the examples of both rows |
+| A row without examples whose example sits under a neighbouring entry | `die Ankunft` (its example is under `ankommen`) | The sentence is linked to the entry whose word it contains |
 | Regional variants | `parkieren (CH)`, `die Stiege (A)` | Kept, marked with `region` |
 | The same sentence under several entries | | Stored once, linked to all entries |
 
@@ -377,7 +379,7 @@ The word-group pages (numbers, weekdays, months, colors, professions, abbreviati
 
 ### 4.5 Workflow
 
-Per level, in the order A1 → A2 → B1, in batches of a few hundred sentences: split by script → clean, translate (zh, en) and annotate → review → validate → append to the seed → report skipped items. A1 is finished and spot-checked by the project owner before A2 starts.
+Per level, in the order A1 → A2 → B1, in batches of a few hundred sentences: split by script → clean, translate (zh, en) and annotate → review → validate → append to the seed → report skipped items. A1 is finished and spot-checked by the project owner before A2 starts. A sentence that a lower level's seed already contains verbatim reuses that seed's translations and annotation (it was reviewed there); likewise a word-group item that the lower level already has a generated sentence for.
 
 ---
 
