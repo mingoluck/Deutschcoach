@@ -3,6 +3,7 @@ import SwiftUI
 /// Debug-only lab screen: shows the database location and content counts.
 struct ContentView: View {
     let model: AppModel
+    @State private var debugMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -54,6 +55,20 @@ struct ContentView: View {
             Text(verbatim: "Bundled seeds: \(BundledSeeds.urls().map(\.lastPathComponent).joined(separator: ", "))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            #if DEBUG
+            HStack {
+                Button(String("Load debug seed (A1, 12 sentences)")) {
+                    Task {
+                        do { try await model.loadDebugSeed(); debugMessage = "Debug seed loaded." }
+                        catch { debugMessage = error.localizedDescription }
+                    }
+                }
+                if let debugMessage {
+                    Text(verbatim: debugMessage).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            #endif
         }
     }
 }

@@ -11,7 +11,11 @@ struct DeutschcoachApp: App {
                     PracticeView(model: model)
                 }
                 Tab("History", systemImage: "clock") {
-                    HistoryView()
+                    if let history = model.history {
+                        HistoryView(history: history, language: model.nativeLanguage)
+                    } else {
+                        Text("No sessions yet.").foregroundStyle(.secondary)
+                    }
                 }
                 #if DEBUG
                 // Milestone lab screens, Debug builds only (DESIGN.md §6).

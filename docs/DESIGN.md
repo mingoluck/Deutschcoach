@@ -275,7 +275,7 @@ Two actions in Settings › “词库” (Library):
 - **Weight** = `(6 − mastery)² × (1 + min(days since last practice, 14) / 7) × jitter(0.8–1.2)`, where mastery is the lower of the sentence's two dimensions. Never-practiced sentences count as 14 days.
 - **New sentence window**: a sentence is *new* when it has no `progress` row. A session contains at most 5 new sentences, picked at random among the new ones; the rest are review. The window size is an initial value in code, adjustable.
 - **Variety**: within a session, at most one sentence per entry, and no sentence twice.
-- **Running out of candidates** (small levels, or all practiced recently): first widen the new window, then allow several sentences of one entry, then allow repeats.
+- **Running out of candidates** (small levels): first widen the new window, then allow several sentences of one entry. A sentence never appears twice in a session; when the level has fewer than 10 practicable sentences, the session is shorter.
 - **User level**: chosen in Settings (A1, A2, B1; default A1; stored in UserDefaults). Practice uses only that level's sentences; mixing levels is left for later (§8).
 - **Mode** by the sentence's own mastery:
 
@@ -296,7 +296,7 @@ Two actions in Settings › “词库” (Library):
 | Translation “翻译” | Translation only | Says the full sentence | `recall` |
 
 - Recording ends when the user taps a button.
-- After answering, the correct full sentence (with annotation) is shown and read aloud, with the mismatched words marked.
+- After answering, the correct full sentence (with annotation) is shown and read aloud; on a failure, the compared reading is shown below it with the mismatched words marked.
 
 ### 3.4 Scoring
 
@@ -305,9 +305,10 @@ Two actions in Settings › “词库” (Library):
 **Exact match after normalization**, the same rule in all three modes:
 
 1. Both texts are normalized: lower case; punctuation and quotation marks removed (including `–`, `„“`, `«»`, `…`); hyphens removed; ß → ss; whitespace collapsed.
-2. In the recognized text, digits are written out in words: integers, clock times (`8:00` → acht Uhr, `8:15` → acht Uhr fünfzehn), and decimals with a comma (`1,80` → eins Komma acht null). The expected text is the sentence's `spoken`, or `de` when `spoken` is null (which then contains no digits).
-3. The two token sequences are aligned word by word (as in 0.1). **All tokens equal → `pass`; anything else → `fail`.** The mismatched token indices go into the event's `detail` and are marked on the answer.
+2. Digits are written out in words, on both sides the same way: integers (`12` → zwölf; `1,80` and `20.000` are read as one number), clock times (`8:00` / `8.00` → acht Uhr, `15:30` → fünfzehn Uhr dreißig; a following `Uhr` is part of the time).
+3. The answer is compared with two readings of the sentence: `spoken` (when present) and `de`. So the recognizer may write a number in digits or in words. The word sequences are aligned (as in 0.1). **All words equal and no extra words, for either reading → `pass`; anything else → `fail`.**
 4. No valid speech recognized, or the user tapped Skip → `not_attempted`.
+5. On a failure, the reading with fewer differences is shown under the answer with the mismatched words marked (and extra words listed); `detail.mismatched` holds the word indices of that reading, and `detail.heard` the transcription, from which the history recomputes the comparison.
 
 - One event per sentence per answer: `pronunciation` for shadowing, `recall` for cloze and translation.
 - There is no lenient matching of inflected forms and no paraphrase judge in 0.2; an answer that differs from the sentence fails.
@@ -483,7 +484,8 @@ Interactive visual reference: the label set review page (an artifact made by Cla
 - **Settings screen**: the standard macOS Settings window (⌘,) with two tabs:
   - “通用” (General): native language (中文 / English), user level (A1, A2, B1), and voice selection (installed German voices, stored in UserDefaults, with a preview). There is no API key field in 0.2.
   - “词库” (Library): counts of entries and sentences per level; the imported seeds from `seed_import` (title, id, version, counts, import time); “清空练习记录” (Clear Practice Records) and “重置数据库” (Reset Database) (§2.6).
-- The main window has two tabs: practice and history. Of the milestone lab screens, only speech and database remain, in Debug builds only.
+- **When the user's level has no sentence**, the practice screen says so (“%@ 级别还没有句子。”) and points to Settings.
+- The main window has two tabs: practice and history. Of the milestone lab screens, only speech and database remain, in Debug builds only. The database lab has a “Load debug seed” button: a 12-sentence A1 seed compiled into Debug builds only (`DebugSeed`, keys `a1.dbg_*` so they never clash with the Goethe seeds), which is also the unit-test fixture.
 
 ---
 

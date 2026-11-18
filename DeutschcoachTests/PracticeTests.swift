@@ -1,0 +1,455 @@
+import Foundation
+import GRDB
+import Testing
+@testable import Deutschcoach
+
+/// A settable clock for stores under test.
+final class TestClock: @unchecked Sendable {
+    var seconds: Double
+    init(_ seconds: Double = 0) { self.seconds = seconds }
+    var date: Date { Date(timeIntervalSince1970: seconds) }
+}
+
+/// Deterministic random source for tests.
+struct SplitMix64: RandomNumberGenerator {
+    var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+}
+
+// MARK: - Mastery rules (DESIGN.md §3.5)
+
+struct MasteryRulesTests {
+    @Test func passUpFailDownNotAttemptedNoChange() {
+        #expect(MasteryRules.level(after: []) == 1)
+        #expect(MasteryRules.level(after: [.pass]) == 2)
+        #expect(MasteryRules.level(after: [.pass, .pass, .fail]) == 2)
+        #expect(MasteryRules.level(after: [.pass, .notAttempted, .pass]) == 3)
+    }
+
+    @Test func levelsStayWithinOneToFive() {
+        #expect(MasteryRules.level(after: [.fail, .fail]) == 1)
+        #expect(MasteryRules.level(after: Array(repeating: .pass, count: 9)) == 5)
+    }
+
+    @Test func modeTable() {
+        #expect(MasteryRules.mode(pronunciation: 1, recall: 5) == .shadow)
+        #expect(MasteryRules.mode(pronunciation: 2, recall: 1) == .shadow)
+        #expect(MasteryRules.mode(pronunciation: 3, recall: 2) == .cloze)
+        #expect(MasteryRules.mode(pronunciation: 3, recall: 3) == .recall)
+        // Two passed shadowings take a new sentence to cloze (§3.5).
+        #expect(MasteryRules.mode(pronunciation: MasteryRules.level(after: [.pass, .pass]), recall: 1) == .cloze)
+        #expect(MasteryRules.dimension(of: .shadow) == .pronunciation)
+        #expect(MasteryRules.dimension(of: .cloze) == .recall)
+        #expect(MasteryRules.dimension(of: .recall) == .recall)
+    }
+}
+
+// MARK: - Scoring (DESIGN.md §3.4)
+
+struct AnswerMatcherTests {
+    private func score(_ de: String, spoken: String? = nil, _ heard: String?, skipped: Bool = false) -> AnswerMatcher.Result {
+        AnswerMatcher.score(de: de, spoken: spoken, heard: heard, skipped: skipped)
+    }
+
+    @Test func caseAndPunctuationDoNotMatter() {
+        #expect(score("Das Auto ist rot.", "das auto ist rot").outcome == .pass)
+        #expect(score("Rauchen Sie? – Manchmal.", "Rauchen Sie manchmal").outcome == .pass)
+        #expect(score("Er ist groß.", "Er ist gross").outcome == .pass)
+    }
+
+    @Test func anyDifferenceFails() {
+        let wrong = score("Das Auto ist rot.", "Das Auto ist rat")
+        #expect(wrong.outcome == .fail)
+        #expect(wrong.mismatched == [3])
+
+        let extra = score("Das Auto ist rot.", "Das Auto ist sehr rot")
+        #expect(extra.outcome == .fail)
+        #expect(extra.alignment?.extra == ["sehr"])
+        #expect(extra.mismatched.isEmpty)
+
+        let missing = score("Das Auto ist rot.", "Das Auto rot")
+        #expect(missing.outcome == .fail)
+        #expect(missing.mismatched == [2])
+    }
+
+    @Test func digitsMatchWordsAndDigits() {
+        let de = "Wir fahren um 12 Uhr ab."
+        let spoken = "Wir fahren um zwölf Uhr ab."
+        #expect(score(de, spoken: spoken, "Wir fahren um zwölf Uhr ab").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Wir fahren um 12 Uhr ab").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Wir fahren um 12:00 Uhr ab").outcome == .pass)
+        #expect(score(de, spoken: spoken, "Wir fahren um elf Uhr ab").outcome == .fail)
+    }
+
+    @Test func clockTimesAndDecimals() {
+        let time = "Das Spiel beginnt um 15.30 Uhr."
+        let timeSpoken = "Das Spiel beginnt um fünfzehn Uhr dreißig."
+        #expect(score(time, spoken: timeSpoken, "Das Spiel beginnt um 15:30 Uhr").outcome == .pass)
+        #expect(score(time, spoken: timeSpoken, "das Spiel beginnt um fünfzehn Uhr dreißig").outcome == .pass)
+
+        let height = "Er ist 1,80 Meter groß."
+        let heightSpoken = "Er ist eins achtzig groß."
+        #expect(score(height, spoken: heightSpoken, "Er ist 1,80 Meter groß").outcome == .pass)
+        #expect(score(height, spoken: heightSpoken, "Er ist eins achtzig groß").outcome == .pass)
+    }
+
+    @Test func skippedAndNoSpeechAreNotAttempted() {
+        #expect(score("Das Auto ist rot.", nil, skipped: true) == .init(outcome: .notAttempted, reason: .skipped))
+        #expect(score("Das Auto ist rot.", nil) == .init(outcome: .notAttempted, reason: .noSpeech))
+        #expect(score("Das Auto ist rot.", " . ") == .init(outcome: .notAttempted, reason: .noSpeech))
+    }
+
+    @Test func failureShowsTheCloserReading() {
+        let result = score("Wir fahren um 12 Uhr ab.", spoken: "Wir fahren um zwölf Uhr ab.", "Wir fahren um zwölf Uhr los")
+        #expect(result.outcome == .fail)
+        #expect(result.alignment?.words.map(\.text) == ["Wir", "fahren", "um", "zwölf", "Uhr", "ab."])
+        #expect(result.mismatched == [5])
+    }
+}
+
+// MARK: - Session building (DESIGN.md §3.2)
+
+struct SessionBuilderTests {
+    private typealias Candidate = SessionBuilder.Candidate
+
+    private func candidate(_ id: Int64, entries: [Int64]? = nil, regional: Bool = false,
+                           pronunciation: Int? = nil, recall: Int? = nil, seenDaysAgo: Double? = nil) -> Candidate {
+        let now = Date(timeIntervalSince1970: 1_000_000_000)
+        return Candidate(
+            sentenceId: id,
+            entries: (entries ?? [id]).map { .init(id: $0, regional: regional) },
+            pronunciation: pronunciation, recall: recall,
+            lastSeenAt: seenDaysAgo.map { Int64(now.timeIntervalSince1970 - $0 * 86_400) }
+        )
+    }
+
+    private let now = Date(timeIntervalSince1970: 1_000_000_000)
+
+    @Test func atMostFiveNewWhenThereIsEnoughReview() {
+        let pool = (1...8).map { candidate($0) } + (11...16).map { candidate($0, pronunciation: 2, recall: 1, seenDaysAgo: 1) }
+        for seed in 0..<20 {
+            var rng = SplitMix64(seed: UInt64(seed))
+            let picks = SessionBuilder.pick(from: pool, now: now, using: &rng)
+            #expect(picks.count == 10)
+            #expect(picks.filter { $0.sentenceId <= 8 }.count <= 5)
+            #expect(Set(picks.map(\.sentenceId)).count == picks.count)
+        }
+    }
+
+    @Test func windowWidensWhenReviewRunsOut() {
+        let pool = (1...12).map { candidate($0) }
+        var rng = SplitMix64(seed: 1)
+        #expect(SessionBuilder.pick(from: pool, now: now, using: &rng).count == 10)
+    }
+
+    @Test func onePerEntryUnlessThereIsNoOtherChoice() {
+        // Sentences 1–3 share entry 100; ten others have their own entries.
+        let shared = (1...3).map { candidate($0, entries: [100]) }
+        let others = (11...20).map { candidate($0, pronunciation: 2, recall: 1, seenDaysAgo: 2) }
+        for seed in 0..<20 {
+            var rng = SplitMix64(seed: UInt64(seed))
+            let picks = SessionBuilder.pick(from: shared + others, now: now, using: &rng)
+            #expect(picks.filter { $0.sentenceId <= 3 }.count <= 1)
+        }
+        // With nothing else, several sentences of one entry are allowed.
+        var rng = SplitMix64(seed: 3)
+        #expect(SessionBuilder.pick(from: shared, now: now, using: &rng).count == 3)
+    }
+
+    @Test func fewCandidatesGiveAShortSessionWithoutRepeats() {
+        let pool = (1...4).map { candidate($0) }
+        var rng = SplitMix64(seed: 7)
+        let picks = SessionBuilder.pick(from: pool, now: now, using: &rng)
+        #expect(picks.map(\.sentenceId).sorted() == [1, 2, 3, 4])
+    }
+
+    @Test func regionalSentencesAreNotPracticed() {
+        var mixed = candidate(2, entries: [20, 21])
+        mixed.entries[1].regional = true
+        let pool = [candidate(1, regional: true), mixed]
+        var rng = SplitMix64(seed: 1)
+        #expect(SessionBuilder.pick(from: pool, now: now, using: &rng).map(\.sentenceId) == [2])
+    }
+
+    @Test func modeFollowsTheSentenceAndClozeBlanksACommonEntry() {
+        var cloze = candidate(2, entries: [20, 21], pronunciation: 3, recall: 1, seenDaysAgo: 1)
+        cloze.entries[0].regional = true
+        let pool = [
+            candidate(1, pronunciation: 2, recall: 1, seenDaysAgo: 1),
+            cloze,
+            candidate(3, pronunciation: 4, recall: 3, seenDaysAgo: 1),
+        ]
+        var rng = SplitMix64(seed: 5)
+        let picks = Dictionary(uniqueKeysWithValues: SessionBuilder.pick(from: pool, now: now, using: &rng).map { ($0.sentenceId, $0) })
+        #expect(picks[1]?.mode == .shadow && picks[1]?.blankEntryId == nil)
+        #expect(picks[2]?.mode == .cloze && picks[2]?.blankEntryId == 21)
+        #expect(picks[3]?.mode == .recall)
+    }
+
+    @Test func weakAndStaleSentencesWeighMore() {
+        var rng = SplitMix64(seed: 1)
+        func average(_ candidate: Candidate) -> Double {
+            (0..<200).map { _ in SessionBuilder.weight(of: candidate, now: now, using: &rng) }.reduce(0, +) / 200
+        }
+        let weakStale = average(candidate(1, pronunciation: 1, recall: 1, seenDaysAgo: 14))
+        let strongFresh = average(candidate(2, pronunciation: 5, recall: 4, seenDaysAgo: 0))
+        let newOne = average(candidate(3))
+        #expect(weakStale > strongFresh * 10)
+        #expect(abs(newOne - weakStale) / weakStale < 0.1)
+    }
+}
+
+// MARK: - Store (DESIGN.md §2.3, §3.4)
+
+private func seededDatabase() async throws -> AppDatabase {
+    let database = try AppDatabase.inMemory()
+    try await SeedImporter.importSeed(try Fixture.seed(), origin: .bundled, into: database)
+    return database
+}
+
+private func sentenceId(_ key: String, in database: AppDatabase) async throws -> Int64 {
+    try await database.writer.read { db throws in
+        try #require(try Int64.fetchOne(db, sql: "SELECT id FROM sentence WHERE key = ?", arguments: [key]))
+    }
+}
+
+struct PracticeStoreTests {
+    @Test func sessionItemsLoadWithClozeBlanks() async throws {
+        let database = try await seededDatabase()
+        let store = PracticeStore(database: database)
+        let sentence = try await sentenceId("a1.dbg_abfahren.1", in: database)
+        let entry = try await database.writer.read { db throws in
+            try #require(try Int64.fetchOne(db, sql: "SELECT id FROM entry WHERE key = 'a1.dbg_abfahren'"))
+        }
+        let id = try #require(try await store.createSession(level: .a1, picks: [
+            .init(sentenceId: sentence, mode: .cloze, blankEntryId: entry),
+        ]))
+        let item = try #require(try await store.nextItem(inSession: id))
+        #expect(item.mode == .cloze && item.blanks == [1, 5])
+        #expect(item.sentence.key == "a1.dbg_abfahren.1")
+        #expect(item.translation(for: "en") == "We leave at twelve o'clock.")
+        #expect(try await store.progress(ofSession: id) == (0, 1))
+        #expect(try await store.createSession(level: .a1, picks: []) == nil)
+    }
+
+    @Test func recordWritesEventProgressAndStatusTogether() async throws {
+        let database = try await seededDatabase()
+        let clock = TestClock(1_000)
+        let store = PracticeStore(database: database, now: { clock.date })
+        let ids = try await [sentenceId("a1.dbg_rot.1", in: database), sentenceId("a1.dbg_kaffee.1", in: database)]
+        let session = try #require(try await store.createSession(level: .a1, picks: ids.map { .init(sentenceId: $0, mode: .shadow) }))
+
+        let first = try #require(try await store.nextItem(inSession: session))
+        let done = try await store.record(.init(outcome: .pass, heard: "Das Auto ist rot", engine: "test", mismatched: []), for: first)
+        #expect(!done)
+        clock.seconds = 2_000
+        let second = try #require(try await store.nextItem(inSession: session))
+        #expect(second.position == 2)
+        let finished = try await store.record(.init(outcome: .notAttempted, reason: .skipped, mismatched: []), for: second)
+        #expect(finished)
+
+        try await database.writer.read { db throws in
+            let progress = try Progress.order(Column("sentence_id")).fetchAll(db)
+            #expect(progress == [Progress(sentenceId: ids[0], dimension: .pronunciation, level: 2, lastSeenAt: 1_000),
+                                 Progress(sentenceId: ids[1], dimension: .pronunciation, level: 1, lastSeenAt: 2_000)])
+            let statuses = try SessionItem.order(Column("position")).fetchAll(db).map(\.status)
+            #expect(statuses == [.done, .skipped])
+            let sessionRow = try #require(try Session.fetchOne(db, key: session))
+            #expect(sessionRow.status == .done && sessionRow.finishedAt == 2_000)
+            let events = try PracticeEvent.order(Column("id")).fetchAll(db)
+            #expect(events.map(\.outcome) == [.pass, .notAttempted])
+            #expect(events.allSatisfy { $0.sessionId == session && $0.mode == .shadow })
+            let detail = try JSONDecoder().decode(PracticeEventDetail.self, from: Data(try #require(events[1].detail).utf8))
+            #expect(detail.reason == .skipped)
+        }
+    }
+
+    @Test func progressCanBeRecomputedFromEvents() async throws {
+        let database = try await seededDatabase()
+        let store = PracticeStore(database: database)
+        let id = try await sentenceId("a1.dbg_rot.1", in: database)
+        let session = try #require(try await store.createSession(level: .a1, picks: [.init(sentenceId: id, mode: .cloze)]))
+        let item = try #require(try await store.nextItem(inSession: session))
+        try await store.record(.init(outcome: .pass, mismatched: []), for: item)
+        let before = try await database.writer.read { db in try Progress.fetchAll(db) }
+        try await store.recomputeAllProgress()
+        #expect(try await database.writer.read { db in try Progress.fetchAll(db) } == before)
+        #expect(before.map(\.dimension) == [.recall])
+    }
+
+    @Test func pruningKeepsTheTenMostRecentSessionsAndAllEvents() async throws {
+        let database = try await seededDatabase()
+        let clock = TestClock()
+        let store = PracticeStore(database: database, now: { clock.date })
+        let id = try await sentenceId("a1.dbg_rot.1", in: database)
+        for round in 1...12 {
+            clock.seconds = Double(round)
+            let session = try #require(try await store.createSession(level: .a1, picks: [.init(sentenceId: id, mode: .shadow)]))
+            let item = try #require(try await store.nextItem(inSession: session))
+            try await store.record(.init(outcome: .pass, mismatched: []), for: item)
+        }
+        try await database.writer.read { db throws in
+            #expect(try Session.fetchCount(db) == 10)
+            #expect(try Session.order(Column("finished_at")).fetchAll(db).first?.finishedAt == 3)
+            #expect(try PracticeEvent.fetchCount(db) == 12)
+            #expect(try Progress.fetchOne(db, key: ["sentence_id": id, "dimension": "pronunciation"])?.level == 5)
+        }
+    }
+}
+
+// MARK: - Engine (DESIGN.md §3)
+
+final class SilentRecognizer: SpeechRecognizer {
+    var engineName: String { "test" }
+    func availability() async -> RecognizerAvailability { .ready }
+    func prepare(progress: @escaping @Sendable (Double) -> Void) async throws {}
+    func transcribe(_ audio: AsyncStream<AudioChunk>, onVolatile: @escaping @Sendable (String) -> Void) async throws -> Transcript {
+        Transcript(text: "", words: [], engine: "test")
+    }
+}
+
+final class SilentSpeaker: SentenceSpeaker {
+    var spoken: [String] = []
+    func speak(_ text: String) async { spoken.append(text) }
+    func stop() {}
+}
+
+@MainActor
+struct PracticeEngineTests {
+    private func makeEngine(_ database: AppDatabase, level: CEFRLevel = .a1, seed: UInt64 = 1) -> PracticeEngine {
+        PracticeEngine(database: database, recognizer: SilentRecognizer(), speaker: SilentSpeaker(),
+                       userLevel: level, random: SplitMix64(seed: seed))
+    }
+
+    /// Answers the current item; `correct` speaks the sentence, otherwise a wrong word.
+    private func answer(_ engine: PracticeEngine, correct: Bool = true, skip: Bool = false) async throws {
+        let item = try #require(engine.item)
+        if skip {
+            await engine.skip()
+        } else {
+            let text = correct ? item.sentence.matchText : item.sentence.matchText + " falsch"
+            await engine.submit(heard: text, skipped: false)
+        }
+        #expect(engine.step == .result)
+    }
+
+    @Test func twoFullSessionsInAllThreeModes() async throws {
+        let database = try await seededDatabase()
+        // One sentence ready for cloze, one for translation (§3.2).
+        let clozeId = try await sentenceId("a1.dbg_kaffee.1", in: database)
+        let recallId = try await sentenceId("a1.dbg_bahnhof.1", in: database)
+        try await database.writer.write { db in
+            try Progress(sentenceId: clozeId, dimension: .pronunciation, level: 3, lastSeenAt: 0).insert(db)
+            try Progress(sentenceId: recallId, dimension: .pronunciation, level: 3, lastSeenAt: 0).insert(db)
+            try Progress(sentenceId: recallId, dimension: .recall, level: 3, lastSeenAt: 0).insert(db)
+        }
+
+        let engine = makeEngine(database)
+        var finished = 0
+        engine.onSessionFinished = { finished += 1 }
+        await engine.start(prepareSpeech: false)
+        #expect(engine.status == .practicing)
+        #expect(engine.progress.total == 10)  // 11 practicable sentences, one is regional
+
+        var modes: Set<SentenceMode> = []
+        var clozeBlanks: [Int] = []
+        for position in 1...10 {
+            let item = try #require(engine.item)
+            #expect(item.position == position)
+            modes.insert(item.mode)
+            if item.mode == .cloze { clozeBlanks = item.blanks }
+            try await answer(engine, correct: position != 2, skip: position == 3)
+            await engine.next()
+        }
+        #expect(modes == [.shadow, .cloze, .recall])
+        #expect(clozeBlanks == [3])  // the Kaffee token
+        #expect(finished == 1)
+
+        // Second session starts right after the first.
+        #expect(engine.item?.position == 1)
+        for _ in 1...10 {
+            try await answer(engine)
+            await engine.next()
+        }
+        #expect(finished == 2)
+
+        try await database.writer.read { db throws in
+            #expect(try Session.filter(Column("status") == "done").fetchCount(db) == 2)
+            #expect(try Session.filter(Column("status") == "active").fetchCount(db) == 1)
+            #expect(try PracticeEvent.fetchCount(db) == 20)
+            #expect(try PracticeEvent.filter(Column("outcome") == "fail").fetchCount(db) == 1)
+        }
+
+        let history = try await HistoryStore(database: database).load()
+        #expect(history.count == 2)
+        let first = try #require(history.last)
+        #expect(first.items.count == 10 && first.passed == 8)
+        let failed = try #require(first.items.first { $0.outcome?.result.outcome == .fail })
+        #expect(failed.outcome?.result.alignment?.extra == ["falsch"])
+        #expect(first.items.contains { $0.outcome?.result.reason == .skipped })
+    }
+
+    @Test func resumesTheActiveSessionOnLaunch() async throws {
+        let database = try await seededDatabase()
+        let first = makeEngine(database)
+        await first.start(prepareSpeech: false)
+        try await answer(first)
+        await first.next()
+        let resumedItem = try #require(first.item)
+
+        let second = makeEngine(database, seed: 99)
+        await second.start(prepareSpeech: false)
+        #expect(second.item == resumedItem)
+        #expect(second.progress.answered == 1)
+    }
+
+    @Test func emptyLevelShowsNoContentUntilContentArrives() async throws {
+        let database = try AppDatabase.inMemory()
+        let engine = makeEngine(database)
+        await engine.start(prepareSpeech: false)
+        #expect(engine.status == .noContent)
+
+        try await SeedImporter.importSeed(try Fixture.seed(), origin: .user, into: database)
+        await engine.changeLevel(to: .a2)
+        #expect(engine.status == .noContent)
+        await engine.changeLevel(to: .a1)
+        #expect(engine.status == .practicing)
+    }
+
+    @Test func libraryChangeStartsPractice() async throws {
+        let database = try AppDatabase.inMemory()
+        let engine = makeEngine(database)
+        await engine.start(prepareSpeech: false)
+        try await SeedImporter.importSeed(try Fixture.seed(), origin: .user, into: database)
+        await engine.libraryChanged()
+        #expect(engine.status == .practicing)
+    }
+
+    @Test func levelChangeFinishesTheActiveSessionFirst() async throws {
+        let database = try await seededDatabase()
+        let engine = makeEngine(database)
+        await engine.start(prepareSpeech: false)
+        let item = engine.item
+        await engine.changeLevel(to: .b1)
+        #expect(engine.status == .practicing && engine.item == item)
+    }
+
+    @Test func dataResetRestartsPractice() async throws {
+        let database = try await seededDatabase()
+        let engine = makeEngine(database)
+        await engine.start(prepareSpeech: false)
+        try await answer(engine)
+        engine.prepareForDataReset()
+        try await database.clearPracticeRecords()
+        await engine.dataWasReset()
+        #expect(engine.status == .practicing)
+        #expect(engine.progress.answered == 0)
+    }
+}

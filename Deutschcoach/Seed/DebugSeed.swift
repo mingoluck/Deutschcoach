@@ -1,13 +1,25 @@
+#if DEBUG
+import Foundation
+
+/// A small A1 seed for trying practice before the real word lists are bundled, and the fixture
+/// of the unit tests. Debug builds only; loaded from the Database lab tab. Its keys carry a
+/// `dbg_` prefix so they never clash with the keys of the Goethe seeds.
+nonisolated enum DebugSeed {
+    static let id = "debug_a1"
+
+    static var data: Data { Data(json.utf8) }
+
+    static let json = """
 {
  "seed": {
-  "id": "fixture_a1",
-  "title": "Fixture A1",
+  "id": "debug_a1",
+  "title": "Debug A1",
   "level": "A1",
   "version": 1
  },
  "entries": [
   {
-   "key": "a1.abfahren",
+   "key": "a1.dbg_abfahren",
    "headword": "abfahren",
    "lemma": "abfahren",
    "pos": "VERB",
@@ -17,7 +29,7 @@
    "parent": null
   },
   {
-   "key": "a1.uhr",
+   "key": "a1.dbg_uhr",
    "headword": "die Uhr, -en",
    "lemma": "Uhr",
    "pos": "NOUN",
@@ -27,7 +39,7 @@
    "parent": null
   },
   {
-   "key": "a1.luft",
+   "key": "a1.dbg_luft",
    "headword": "die Luft",
    "lemma": "Luft",
    "pos": "NOUN",
@@ -37,7 +49,7 @@
    "parent": null
   },
   {
-   "key": "a1.luegen",
+   "key": "a1.dbg_luegen",
    "headword": "lügen, lügt, log, hat gelogen",
    "lemma": "lügen",
    "pos": "VERB",
@@ -47,17 +59,17 @@
    "parent": null
   },
   {
-   "key": "a1.luege",
+   "key": "a1.dbg_luege",
    "headword": "die Lüge, -n",
    "lemma": "Lüge",
    "pos": "NOUN",
    "gender": "Fem",
    "group": null,
    "region": null,
-   "parent": "a1.luegen"
+   "parent": "a1.dbg_luegen"
   },
   {
-   "key": "a1.rauchen",
+   "key": "a1.dbg_rauchen",
    "headword": "rauchen",
    "lemma": "rauchen",
    "pos": "VERB",
@@ -67,7 +79,7 @@
    "parent": null
   },
   {
-   "key": "a1.manchmal",
+   "key": "a1.dbg_manchmal",
    "headword": "manchmal",
    "lemma": "manchmal",
    "pos": "ADV",
@@ -77,7 +89,7 @@
    "parent": null
   },
   {
-   "key": "a1.rot",
+   "key": "a1.dbg_rot",
    "headword": "rot",
    "lemma": "rot",
    "pos": "ADJ",
@@ -87,7 +99,7 @@
    "parent": null
   },
   {
-   "key": "a1.parkieren",
+   "key": "a1.dbg_parkieren",
    "headword": "parkieren (CH) → D, A: parken",
    "lemma": "parkieren",
    "pos": "VERB",
@@ -95,11 +107,61 @@
    "group": null,
    "region": "CH",
    "parent": null
+  },
+  {
+   "key": "a1.dbg_kaffee",
+   "headword": "der Kaffee",
+   "lemma": "Kaffee",
+   "pos": "NOUN",
+   "gender": "Masc",
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.dbg_bahnhof",
+   "headword": "der Bahnhof, ¨-e",
+   "lemma": "Bahnhof",
+   "pos": "NOUN",
+   "gender": "Masc",
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.dbg_helfen",
+   "headword": "helfen, hilft, half, hat geholfen",
+   "lemma": "helfen",
+   "pos": "VERB",
+   "gender": null,
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.dbg_wochenende",
+   "headword": "das Wochenende, -n",
+   "lemma": "Wochenende",
+   "pos": "NOUN",
+   "gender": "Neut",
+   "group": null,
+   "region": null,
+   "parent": null
+  },
+  {
+   "key": "a1.dbg_kosten",
+   "headword": "kosten",
+   "lemma": "kosten",
+   "pos": "VERB",
+   "gender": null,
+   "group": null,
+   "region": null,
+   "parent": null
   }
  ],
  "sentences": [
   {
-   "key": "a1.abfahren.1",
+   "key": "a1.dbg_abfahren.1",
    "source": "goethe",
    "de": "Wir fahren um 12 Uhr ab.",
    "spoken": "Wir fahren um zwölf Uhr ab.",
@@ -177,14 +239,14 @@
    ],
    "entries": [
     {
-     "key": "a1.abfahren",
+     "key": "a1.dbg_abfahren",
      "tokens": [
       1,
       5
      ]
     },
     {
-     "key": "a1.uhr",
+     "key": "a1.dbg_uhr",
      "tokens": [
       4
      ]
@@ -193,7 +255,7 @@
    "orig": null
   },
   {
-   "key": "a1.luft.1",
+   "key": "a1.dbg_luft.1",
    "source": "goethe",
    "de": "Die Seeluft tut mir gut.",
    "spoken": null,
@@ -269,7 +331,7 @@
    ],
    "entries": [
     {
-     "key": "a1.luft",
+     "key": "a1.dbg_luft",
      "tokens": [
       1
      ]
@@ -278,7 +340,7 @@
    "orig": null
   },
   {
-   "key": "a1.luegen.1",
+   "key": "a1.dbg_luegen.1",
    "source": "goethe",
    "de": "Du sollst nicht lügen.",
    "spoken": null,
@@ -335,7 +397,7 @@
    ],
    "entries": [
     {
-     "key": "a1.luegen",
+     "key": "a1.dbg_luegen",
      "tokens": [
       3
      ]
@@ -344,7 +406,7 @@
    "orig": null
   },
   {
-   "key": "a1.luege.1",
+   "key": "a1.dbg_luege.1",
    "source": "goethe",
    "de": "Das ist eine Lüge!",
    "spoken": null,
@@ -408,7 +470,7 @@
    ],
    "entries": [
     {
-     "key": "a1.luege",
+     "key": "a1.dbg_luege",
      "tokens": [
       3
      ]
@@ -417,7 +479,7 @@
    "orig": null
   },
   {
-   "key": "a1.rauchen.1",
+   "key": "a1.dbg_rauchen.1",
    "source": "goethe",
    "de": "Rauchen Sie? – Manchmal.",
    "spoken": null,
@@ -485,22 +547,22 @@
    ],
    "entries": [
     {
-     "key": "a1.rauchen",
+     "key": "a1.dbg_rauchen",
      "tokens": [
       0
      ]
     },
     {
-     "key": "a1.manchmal",
+     "key": "a1.dbg_manchmal",
      "tokens": [
       4
      ]
     }
    ],
-   "orig": "Rauchen Sie?\n– Manchmal."
+   "orig": "Rauchen Sie? / – Manchmal."
   },
   {
-   "key": "a1.rot.1",
+   "key": "a1.dbg_rot.1",
    "source": "generated",
    "de": "Das Auto ist rot.",
    "spoken": null,
@@ -564,7 +626,7 @@
    ],
    "entries": [
     {
-     "key": "a1.rot",
+     "key": "a1.dbg_rot",
      "tokens": [
       3
      ]
@@ -573,7 +635,7 @@
    "orig": null
   },
   {
-   "key": "a1.parkieren.1",
+   "key": "a1.dbg_parkieren.1",
    "source": "goethe",
    "de": "Hier dürfen Sie nicht parkieren.",
    "spoken": null,
@@ -642,9 +704,390 @@
    ],
    "entries": [
     {
-     "key": "a1.parkieren",
+     "key": "a1.dbg_parkieren",
      "tokens": [
       4
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.dbg_kaffee.1",
+   "source": "goethe",
+   "de": "Ich trinke gern Kaffee.",
+   "spoken": null,
+   "translations": {
+    "zh": "我喜欢喝咖啡。",
+    "en": "I like drinking coffee."
+   },
+   "words": [
+    [
+     "Ich",
+     "ich",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "trinke",
+     "trinken",
+     "VERB",
+     "Fin"
+    ],
+    [
+     "gern",
+     "gern",
+     "ADV",
+     ""
+    ],
+    [
+     "Kaffee",
+     "Kaffee",
+     "NOUN",
+     "Acc",
+     "Masc"
+    ],
+    [
+     ".",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Subj",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      1
+     ]
+    },
+    {
+     "fn": "AdvM",
+     "tokens": [
+      2
+     ]
+    },
+    {
+     "fn": "ObjAcc",
+     "tokens": [
+      3
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.dbg_kaffee",
+     "tokens": [
+      3
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.dbg_bahnhof.1",
+   "source": "goethe",
+   "de": "Wo ist der Bahnhof?",
+   "spoken": null,
+   "translations": {
+    "zh": "火车站在哪里？",
+    "en": "Where is the train station?"
+   },
+   "words": [
+    [
+     "Wo",
+     "wo",
+     "ADV",
+     ""
+    ],
+    [
+     "ist",
+     "sein",
+     "AUX",
+     "Fin"
+    ],
+    [
+     "der",
+     "der",
+     "DET",
+     "Nom"
+    ],
+    [
+     "Bahnhof",
+     "Bahnhof",
+     "NOUN",
+     "Nom",
+     "Masc"
+    ],
+    [
+     "?",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "AdvL",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      1
+     ]
+    },
+    {
+     "fn": "Subj",
+     "tokens": [
+      2,
+      3
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.dbg_bahnhof",
+     "tokens": [
+      3
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.dbg_helfen.1",
+   "source": "goethe",
+   "de": "Kannst du mir helfen?",
+   "spoken": null,
+   "translations": {
+    "zh": "你能帮我吗？",
+    "en": "Can you (informal) help me?"
+   },
+   "words": [
+    [
+     "Kannst",
+     "können",
+     "AUX",
+     "Fin"
+    ],
+    [
+     "du",
+     "du",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "mir",
+     "ich",
+     "PRON",
+     "Dat"
+    ],
+    [
+     "helfen",
+     "helfen",
+     "VERB",
+     "Inf"
+    ],
+    [
+     "?",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Pred",
+     "tokens": [
+      0,
+      3
+     ]
+    },
+    {
+     "fn": "Subj",
+     "tokens": [
+      1
+     ]
+    },
+    {
+     "fn": "ObjDat",
+     "tokens": [
+      2
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.dbg_helfen",
+     "tokens": [
+      3
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.dbg_wochenende.1",
+   "source": "goethe",
+   "de": "Was machst du am Wochenende?",
+   "spoken": null,
+   "translations": {
+    "zh": "你周末做什么？",
+    "en": "What are you (informal) doing at the weekend?"
+   },
+   "words": [
+    [
+     "Was",
+     "was",
+     "PRON",
+     "Acc"
+    ],
+    [
+     "machst",
+     "machen",
+     "VERB",
+     "Fin"
+    ],
+    [
+     "du",
+     "du",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "am",
+     "an",
+     "ADP",
+     "Dat"
+    ],
+    [
+     "Wochenende",
+     "Wochenende",
+     "NOUN",
+     "Dat",
+     "Neut"
+    ],
+    [
+     "?",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "ObjAcc",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      1
+     ]
+    },
+    {
+     "fn": "Subj",
+     "tokens": [
+      2
+     ]
+    },
+    {
+     "fn": "AdvT",
+     "tokens": [
+      3,
+      4
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.dbg_wochenende",
+     "tokens": [
+      4
+     ]
+    }
+   ],
+   "orig": null
+  },
+  {
+   "key": "a1.dbg_kosten.1",
+   "source": "goethe",
+   "de": "Das kostet 20 Euro.",
+   "spoken": "Das kostet zwanzig Euro.",
+   "translations": {
+    "zh": "这个二十欧元。",
+    "en": "That costs twenty euros."
+   },
+   "words": [
+    [
+     "Das",
+     "das",
+     "PRON",
+     "Nom"
+    ],
+    [
+     "kostet",
+     "kosten",
+     "VERB",
+     "Fin"
+    ],
+    [
+     "20",
+     "zwanzig",
+     "NUM",
+     ""
+    ],
+    [
+     "Euro",
+     "Euro",
+     "NOUN",
+     "Acc",
+     "Masc"
+    ],
+    [
+     ".",
+     "",
+     "PUNCT",
+     ""
+    ]
+   ],
+   "spans": [
+    {
+     "fn": "Subj",
+     "tokens": [
+      0
+     ]
+    },
+    {
+     "fn": "Pred",
+     "tokens": [
+      1
+     ]
+    },
+    {
+     "fn": "ObjAcc",
+     "tokens": [
+      2,
+      3
+     ]
+    }
+   ],
+   "entries": [
+    {
+     "key": "a1.dbg_kosten",
+     "tokens": [
+      1
      ]
     }
    ],
@@ -652,3 +1095,6 @@
   }
  ]
 }
+"""
+}
+#endif

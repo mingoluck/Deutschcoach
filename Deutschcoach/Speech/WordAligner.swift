@@ -124,6 +124,23 @@ nonisolated enum WordAligner {
         return Alignment(words: words, extra: extra)
     }
 
+    /// Aligns two texts that are tokenized the same way, digits and clock times included, so that
+    /// `um 15.30 Uhr` in a sentence matches `um 15:30 Uhr` or `um fünfzehn Uhr dreißig` heard
+    /// (DESIGN.md §3.4). Word indices refer to the expanded words of `expected`.
+    static func align(expected: String, heard: String) -> Alignment {
+        let expectedWords = heardTokens(expected)
+        var alignment = align(target: expectedWords.map(\.key), heard: heard)
+        // Show the words as written in `expected` (an expanded number shows its spelled-out word).
+        for offset in alignment.words.indices {
+            let word = alignment.words[offset]
+            let original = expectedWords[word.index]
+            if expandClockTime(original.text) == nil && !original.text.contains(where: \.isNumber) {
+                alignment.words[offset].text = original.text
+            }
+        }
+        return alignment
+    }
+
     /// Convenience for a plain sentence: tokens are split on whitespace.
     static func align(sentence: String, heard: String) -> Alignment {
         align(target: sentence.split(whereSeparator: \.isWhitespace).map(String.init), heard: heard)

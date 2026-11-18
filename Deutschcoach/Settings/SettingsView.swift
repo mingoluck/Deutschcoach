@@ -26,41 +26,15 @@ struct SettingsView: View {
     }
 }
 
-/// API key, native language, user level, voice.
+/// Native language, user level, voice. There is no API key in version 0.2 (DESIGN.md §6).
 private struct GeneralSettingsView: View {
     let model: AppModel
 
-    @State private var keyInput = ""
-    @State private var keyError: String?
-    @State private var isSaving = false
     @State private var voiceId: String = Speaker.selectedVoiceIdentifier ?? ""
     private let voices = Speaker.germanVoices()
 
     var body: some View {
         Form {
-            Section("Claude API Key") {
-                LabeledContent("Status") {
-                    Text(model.hasAPIKey ? "Stored in the Keychain" : "Not set")
-                        .foregroundStyle(model.hasAPIKey ? Color.secondary : Color.red)
-                }
-                SecureField("New key", text: $keyInput)
-                    .onSubmit(save)
-                HStack {
-                    Button("Save", action: save)
-                        .disabled(keyInput.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
-                    if model.hasAPIKey {
-                        Button("Delete", role: .destructive) {
-                            Task {
-                                do { try await model.deleteAPIKey() } catch { keyError = error.localizedDescription }
-                            }
-                        }
-                    }
-                }
-                if let keyError {
-                    Text(keyError).foregroundStyle(.red)
-                }
-            }
-
             Section("Native Language") {
                 Picker("Native Language", selection: Binding(
                     get: { model.nativeLanguage },
@@ -112,22 +86,5 @@ private struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 480)
-        .onAppear { model.refreshKeyState() }
-    }
-
-    private func save() {
-        let key = keyInput
-        guard !key.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        isSaving = true
-        Task {
-            do {
-                try await model.saveAPIKey(key)
-                keyInput = ""
-                keyError = nil
-            } catch {
-                keyError = error.localizedDescription
-            }
-            isSaving = false
-        }
     }
 }

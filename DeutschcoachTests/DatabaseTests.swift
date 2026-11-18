@@ -55,9 +55,9 @@ struct MigrationTests {
 // MARK: - Fixture
 
 enum Fixture {
+    /// The debug seed doubles as the test fixture (12 sentences, one of them regional).
     static func data() throws -> Data {
-        let url = try #require(Bundle(for: FixtureBundle.self).url(forResource: "seed_fixture", withExtension: "json"))
-        return try Data(contentsOf: url)
+        DebugSeed.data
     }
 
     static func seed() throws -> SeedFile {
@@ -134,12 +134,12 @@ struct SeedValidatorTests {
         }
         #expect(found.contains("span Subj token 9 out of range"))
         #expect(found.contains("span Pred contains punctuation"))
-        #expect(found.contains("entry a1.luege token out of range"))
+        #expect(found.contains("entry a1.dbg_luege token out of range"))
     }
 
     @Test func entryTokensCarryTheEntryLemma() throws {
         let found = try messages { $0.sentences[2].entries[0].tokens = [1] }
-        #expect(found.contains("the tokens of entry a1.luegen do not have its lemma lügen"))
+        #expect(found.contains("the tokens of entry a1.dbg_luegen do not have its lemma lügen"))
         #expect(SeedValidator.lemma("abfahren", matches: ["abfahren", "abfahren"]))
         #expect(SeedValidator.lemma("Auf Wiedersehen", matches: ["auf", "Wiedersehen"]))
         #expect(SeedValidator.lemma("Luft", matches: ["Seeluft"]))
@@ -149,12 +149,12 @@ struct SeedValidatorTests {
 
     @Test func entriesMustResolve() throws {
         let found = try messages { file in
-            file.sentences[0].entries.append(SeedSentenceEntry(key: "a1.nirgends", tokens: [0]))
-            file.entries[4].parent = "a1.nirgends"
+            file.sentences[0].entries.append(SeedSentenceEntry(key: "a1.dbg_nirgends", tokens: [0]))
+            file.entries[4].parent = "a1.dbg_nirgends"
             file.sentences[1].entries = []
         }
-        #expect(found.contains("entry a1.nirgends is not in this file"))
-        #expect(found.contains("parent a1.nirgends is not an entry of this file"))
+        #expect(found.contains("entry a1.dbg_nirgends is not in this file"))
+        #expect(found.contains("parent a1.dbg_nirgends is not an entry of this file"))
         #expect(found.contains("links no entry"))
     }
 
@@ -162,7 +162,7 @@ struct SeedValidatorTests {
         let found = try messages { file in
             file.entries.append(file.entries[0])
             file.sentences[1].key = file.sentences[0].key
-            file.sentences[2].key = "a2.luegen.1"
+            file.sentences[2].key = "a2.dbg_luegen.1"
             file.entries[1].key = "a1.Uhr"
         }
         #expect(found.contains("duplicate entry key"))
@@ -224,11 +224,11 @@ struct SeedImportTests {
     @Test func importsEntriesSentencesAndLinks() async throws {
         let database = try AppDatabase.inMemory()
         let report = try await SeedImporter.importSeed(try Fixture.seed(), origin: .bundled, into: database)
-        #expect(report.entries == 9 && report.sentences == 7 && report.newSentences == 7)
-        #expect(try await counts(database) == ["entry": 9, "sentence": 7, "sentence_entry": 9, "seed_import": 1, "retired": 0])
+        #expect(report.entries == 14 && report.sentences == 12 && report.newSentences == 12)
+        #expect(try await counts(database) == ["entry": 14, "sentence": 12, "sentence_entry": 14, "seed_import": 1, "retired": 0])
 
         try await database.writer.read { db in
-            let sentence = try #require(try Sentence.filter(Column("key") == "a1.abfahren.1").fetchOne(db))
+            let sentence = try #require(try Sentence.filter(Column("key") == "a1.dbg_abfahren.1").fetchOne(db))
             #expect(sentence.matchText == "Wir fahren um zwölf Uhr ab.")
             #expect(sentence.translation(for: "zh") == "我们十二点出发。")
             #expect(try sentence.decodedAnnotation().words.count == 7)
@@ -237,15 +237,15 @@ struct SeedImportTests {
             let links = try SentenceEntry.filter(Column("sentence_id") == sentence.id).fetchAll(db)
             #expect(Set(links.map(\.decodedTokens)) == [[1, 5], [4]])
 
-            let lie = try #require(try Entry.filter(Column("key") == "a1.luege").fetchOne(db))
-            let lieVerb = try #require(try Entry.filter(Column("key") == "a1.luegen").fetchOne(db))
+            let lie = try #require(try Entry.filter(Column("key") == "a1.dbg_luege").fetchOne(db))
+            let lieVerb = try #require(try Entry.filter(Column("key") == "a1.dbg_luegen").fetchOne(db))
             #expect(lie.parentId == lieVerb.id)
-            let parkieren = try #require(try Entry.filter(Column("key") == "a1.parkieren").fetchOne(db))
+            let parkieren = try #require(try Entry.filter(Column("key") == "a1.dbg_parkieren").fetchOne(db))
             #expect(parkieren.region == .ch)
-            #expect(try Entry.filter(Column("key") == "a1.rot").fetchOne(db)?.grp == "Farben")
+            #expect(try Entry.filter(Column("key") == "a1.dbg_rot").fetchOne(db)?.grp == "Farben")
 
-            let seed = try #require(try SeedImport.fetchOne(db, key: "fixture_a1"))
-            #expect(seed.version == 1 && seed.origin == .bundled && seed.entryCount == 9 && seed.sentenceCount == 7)
+            let seed = try #require(try SeedImport.fetchOne(db, key: "debug_a1"))
+            #expect(seed.version == 1 && seed.origin == .bundled && seed.entryCount == 14 && seed.sentenceCount == 12)
         }
     }
 
@@ -256,14 +256,14 @@ struct SeedImportTests {
         let report = try await SeedImporter.importSeed(try Fixture.seed(), origin: .bundled, into: database)
         #expect(report.newSentences == 0)
         #expect(try await ids(database) == before)
-        #expect(try await counts(database)["sentence_entry"] == 9)
+        #expect(try await counts(database)["sentence_entry"] == 14)
     }
 
     @Test func newVersionUpdatesRetiresAndKeepsUserData() async throws {
         let database = try AppDatabase.inMemory()
         try await SeedImporter.importSeed(try Fixture.seed(), origin: .bundled, into: database)
         let before = try await ids(database)
-        let removedId = try #require(before["a1.luft.1"])
+        let removedId = try #require(before["a1.dbg_luft.1"])
         try await database.writer.write { db in
             try Progress(sentenceId: removedId, dimension: .pronunciation, level: 3, lastSeenAt: 1).insert(db)
             var event = PracticeEvent(ts: 1, sessionId: nil, sentenceId: removedId, dimension: .pronunciation, mode: .shadow, outcome: .pass)
@@ -273,8 +273,8 @@ struct SeedImportTests {
         var file = try Fixture.seed()
         file.seed.version = 2
         file.sentences[0].translations["en"] = "We set off at twelve o'clock."
-        file.sentences.removeAll { $0.key == "a1.luft.1" }
-        file.entries.removeAll { $0.key == "a1.luft" }
+        file.sentences.removeAll { $0.key == "a1.dbg_luft.1" }
+        file.entries.removeAll { $0.key == "a1.dbg_luft" }
         let report = try await SeedImporter.importSeed(file, origin: .bundled, into: database)
         #expect(report.retiredEntries == 1 && report.retiredSentences == 1)
 
@@ -284,9 +284,9 @@ struct SeedImportTests {
             #expect(removed.status == .retired)
             #expect(try Progress.fetchCount(db) == 1)
             #expect(try PracticeEvent.fetchCount(db) == 1)
-            let changed = try #require(try Sentence.filter(Column("key") == "a1.abfahren.1").fetchOne(db))
+            let changed = try #require(try Sentence.filter(Column("key") == "a1.dbg_abfahren.1").fetchOne(db))
             #expect(changed.translation(for: "en") == "We set off at twelve o'clock.")
-            #expect(try SeedImport.fetchOne(db, key: "fixture_a1")?.version == 2)
+            #expect(try SeedImport.fetchOne(db, key: "debug_a1")?.version == 2)
         }
 
         // Bringing the sentence back reactivates it under the same id.
@@ -317,7 +317,7 @@ struct SeedImportTests {
             try await SeedImporter.importSeed(other, origin: .user, into: database)
             Issue.record("expected a validation failure")
         } catch let failure as SeedImporter.ValidationFailed {
-            #expect(failure.issues.contains { $0.key == "a1.abfahren" && $0.message == "the key belongs to another seed" })
+            #expect(failure.issues.contains { $0.key == "a1.dbg_abfahren" && $0.message == "the key belongs to another seed" })
         }
     }
 }
@@ -361,7 +361,7 @@ struct BundledSeedsTests {
         defer { for url in [bad, good, garbage] { try? FileManager.default.removeItem(at: url) } }
 
         let outcome = await BundledSeeds.importIfNeeded([bad, garbage, good], into: database)
-        #expect(outcome.imported.map(\.seedId) == ["fixture_a1"])
+        #expect(outcome.imported.map(\.seedId) == ["debug_a1"])
         #expect(outcome.failures.count == 2)
         #expect(outcome.failures[0].seedId == "broken_a1")
         #expect(outcome.failures[0].message.contains("unknown POS XYZ"))
@@ -392,8 +392,8 @@ struct ClearDataTests {
         try await database.clearPracticeRecords()
         let stats = try await database.libraryStats()
         #expect(stats.practiceEvents == 0 && stats.sessions == 0)
-        #expect(stats.sentences[.a1] == 7 && stats.entries[.a1] == 9)
-        #expect(stats.seeds.map(\.seedId) == ["fixture_a1"])
+        #expect(stats.sentences[.a1] == 12 && stats.entries[.a1] == 14)
+        #expect(stats.seeds.map(\.seedId) == ["debug_a1"])
     }
 
     @Test func resetDeletesEverythingAndContentCanBeImportedAgain() async throws {
@@ -406,6 +406,6 @@ struct ClearDataTests {
         defer { try? FileManager.default.removeItem(at: v1) }
         let outcome = await BundledSeeds.importIfNeeded([v1], into: database)
         #expect(outcome.imported.count == 1)
-        #expect(try await database.libraryStats().sentences[.a1] == 7)
+        #expect(try await database.libraryStats().sentences[.a1] == 12)
     }
 }
