@@ -343,7 +343,7 @@ The seeds are produced in Claude Code sessions, not by the app and not by API ca
 | Several examples per cell, numbering | `<br>`, `1. …`, `10.Das macht …` | Split into sentences; remove the numbering |
 | Continuation lines of a dialogue | a line starting with `–` | Joined to the previous line; the dialogue is one sentence |
 | Digits, abbreviations with a period | `um 15.30 Uhr`, `20.000`, `z. B.` | Not treated as sentence ends; `spoken` written out in words |
-| Slash alternatives, optional parts | `Club/Klub`, `ihr/ihm`, `mein (Ehe-) Mann/meine (Ehe-) Frau` | The first alternative becomes the sentence; optional parts in parentheses are dropped; `orig` keeps the source text |
+| Slash alternatives, optional parts | `Club/Klub`, `ihr/ihm`, `mein (Ehe-) Mann/meine (Ehe-) Frau` | The first alternative becomes the sentence; optional parts in parentheses are dropped, except when dropping them would remove the headword from the sentence (`(ein)mal` → `einmal`, recorded as a correction); `orig` keeps the source text |
 | Fragments and placeholders | `Also, die Sache ist so: …`, `Morgen schwimmen ... ist ein guter Plan.` | Skipped and reported |
 | Conversion (OCR) errors with exactly one possible correction | `SInd Sie Ausländerin?`, `WiIlst du …`, plural `-Ä` | Corrected; `orig` keeps the source text; listed in the report's “Corrected” section |
 | Other errors in the source | `Mit tut der Magen weh.` | Skipped and reported; never corrected |
@@ -375,7 +375,7 @@ Every sentence goes through two checks before it is written to a seed:
 
 ### 4.4 Word Groups (Wortgruppen)
 
-The word-group pages (numbers, weekdays, months, colors, professions, abbreviations, …) have no example sentences. Each item becomes an entry with `group` set, and Claude writes one simple, natural sentence for it at the list's level (`source = 'generated'`), within the word limit of the level (A1 ≤ 8, A2 ≤ 12, B1 ≤ 16 words, punctuation not counted), using only common words of that level or below. Items that are already entries of the alphabetical list of the same level get no second sentence. Items that are readings rather than words (dates and clock times: `halb drei`, `Viertel nach zwei`, years, ordinal dates) become phrase entries (e.g. *halb* with clock times, *Viertel vor/nach*), one sentence each. Generated sentences write numbers in words, so they need no `spoken`. They go through the same review and validation.
+The word-group pages (numbers, weekdays, months, colors, professions, abbreviations, …) mostly have no example sentences. Where a word-group page does give examples (B1 *Anweisungssprache*), they become the items' sentences (`source = 'goethe'`), cleaned and reviewed like the alphabetical list. Every other item becomes an entry with `group` set, and Claude writes one simple, natural sentence for it at the list's level (`source = 'generated'`), within the word limit of the level (A1 ≤ 8, A2 ≤ 12, B1 ≤ 16 words, punctuation not counted), using only common words of that level or below. Items that are already entries of the alphabetical list of the same level get no second sentence; a word-group example of such an item is listed as skipped. Items that are readings rather than words (dates and clock times: `halb drei`, `Viertel nach zwei`, years, ordinal dates) become phrase entries (e.g. *halb* with clock times, *Viertel vor/nach*), one sentence each. Generated sentences write numbers in words, so they need no `spoken`. They go through the same review and validation.
 
 ### 4.5 Workflow
 
