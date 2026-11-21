@@ -499,9 +499,7 @@ Interactive visual reference: the label set review page (an artifact made by Cla
 ## 6. UI
 
 - **Practice screen**: a header (not clickable) with the library of the current sentence (title, level, “已掌握 X / N” Mastered X of N) and its **library progress**; below it the mode and the position in the session. The rest shows only the German sentence, annotation, and translation (translation mode shows only the translation); a record button; a skip button; while recording, the in-progress (volatile) transcription is shown live as feedback, and only the final transcription is scored; after answering, the correct answer is shown and read aloud, with mismatched words marked.
-- **Library progress** counts the library's active sentences (N) by their ladder level (§3.5), shown as:
-  - a bar segmented by current stage: shadowing (1–2), cloze (3–4), translation (5–6), mastered (7), with new sentences (no `progress` row) as the track;
-  - five rings after the bar, each a share of N in whole percent (a share that is neither zero nor whole never shows as 0 % or 100 %):
+- **Library progress** counts the library's active sentences (N) by their ladder level (§3.5), shown as five rings, each a share of N in whole percent (a share that is neither zero nor whole never shows as 0 % or 100 %):
 
 | Ring | Sentences counted |
 |---|---|

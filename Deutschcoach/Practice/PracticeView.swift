@@ -95,12 +95,7 @@ private struct PracticeContent: View {
                 Spacer(minLength: 0)
                 MasteredLabel(progress: library)
             }
-            HStack(spacing: 16) {
-                LibraryProgressBar(progress: library)
-                    .frame(maxWidth: 220)
-                LibraryRings(progress: library)
-                Spacer(minLength: 0)
-            }
+            LibraryRings(progress: library)
         }
     }
 

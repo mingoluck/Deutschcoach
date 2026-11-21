@@ -310,7 +310,8 @@ struct PracticeStoreTests {
         let progress = try #require(try await PracticeStore(database: database).libraryProgress(seedId: Fixture.seedId))
         #expect(progress.title == "Debug A1")
         #expect(progress.level == .a1)
-        #expect((progress.new, progress.shadow, progress.cloze, progress.recall, progress.mastered) == (7, 2, 1, 1, 1))
+        #expect(progress.new == 7 && progress.mastered == 1)
+        #expect(progress.byLevel == [0, 1, 1, 1, 0, 0, 1, 1])
         #expect(progress.total == 12 && progress.practiced == 5)
         // The five rings (§6): practiced, level ≥ 2, ≥ 4, ≥ 6, 7.
         let rings: [Int] = [progress.practiced, progress.reached(2), progress.reached(4), progress.reached(6), progress.reached(7)]

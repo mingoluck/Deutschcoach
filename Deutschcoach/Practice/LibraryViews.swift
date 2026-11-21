@@ -1,34 +1,6 @@
 import SwiftUI
 
-/// A library's progress as one bar, segmented by current stage of the mastery ladder
-/// (DESIGN.md §6): mastered, translation, cloze and shadowing from strong to light; new sentences
-/// are the track.
-struct LibraryProgressBar: View {
-    let progress: LibraryProgress
-
-    var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                    Rectangle()
-                        .fill(Color.accentColor.opacity(segment.opacity))
-                        .frame(width: geometry.size.width * progress.share(segment.count))
-                }
-                Spacer(minLength: 0)
-            }
-            .background(Color.secondary.opacity(0.15))
-            .clipShape(Capsule())
-        }
-        .frame(height: 6)
-        .accessibilityHidden(true)
-    }
-
-    private var segments: [(count: Int, opacity: Double)] {
-        [(progress.mastered, 1), (progress.recall, 0.65), (progress.cloze, 0.4), (progress.shadow, 0.2)]
-    }
-}
-
-/// Five rings after the progress bar (DESIGN.md §6), each a share of the library's sentences:
+/// A library's progress as five rings (DESIGN.md §6), each a share of the library's sentences:
 /// practiced, and reached level 2, 4, 6 and 7 of the ladder.
 struct LibraryRings: View {
     let progress: LibraryProgress

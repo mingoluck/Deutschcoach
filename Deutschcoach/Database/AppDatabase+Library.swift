@@ -22,10 +22,7 @@ nonisolated struct LibraryProgress: Sendable, Equatable {
         byLevel[max(level, MasteryRules.minLevel)...].reduce(0, +)
     }
 
-    /// Current stage, for the progress bar: levels 1–2, 3–4, 5–6 and 7.
-    var shadow: Int { reached(1) - reached(3) }
-    var cloze: Int { reached(3) - reached(5) }
-    var recall: Int { reached(5) - reached(MasteryRules.masteredLevel) }
+    /// Level 7.
     var mastered: Int { reached(MasteryRules.masteredLevel) }
 
     /// `count` as a share of all active sentences, 0 for an empty library.
