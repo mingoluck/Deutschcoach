@@ -19,15 +19,16 @@ nonisolated struct SessionBuilder {
     struct Candidate: Sendable, Equatable {
         var sentenceId: Int64
         var entries: [EntryRef]
-        var pronunciation: Int?
-        var recall: Int?
+        /// The `progress` level, nil for a new sentence.
+        var progress: Int?
         /// Unix time in seconds of the last event, nil if never practiced.
         var lastSeenAt: Int64?
 
         /// New: no `progress` row yet.
-        var isNew: Bool { pronunciation == nil && recall == nil }
-        var mastery: Int { min(pronunciation ?? 1, recall ?? 1) }
-        var mode: SentenceMode { MasteryRules.mode(pronunciation: pronunciation ?? 1, recall: recall ?? 1) }
+        var isNew: Bool { progress == nil }
+        /// The ladder level; a new sentence counts as `MasteryRules.newLevel` (§3.5).
+        var level: Int { progress ?? MasteryRules.newLevel }
+        var mode: SentenceMode { MasteryRules.mode(level: level) }
         /// Practiced only when at least one linked entry is common German (§3.2).
         var isPracticable: Bool { entries.contains { !$0.regional } }
     }
@@ -45,13 +46,11 @@ nonisolated struct SessionBuilder {
         var order: [Int64] = []
         let rows = try Row.fetchAll(db, sql: """
             SELECT s.id AS sentence_id, se.entry_id, e.region,
-                   p.level AS pronunciation, p.last_seen_at AS p_seen,
-                   r.level AS recall, r.last_seen_at AS r_seen
+                   p.level, p.last_seen_at
             FROM sentence s
             JOIN sentence_entry se ON se.sentence_id = s.id
             JOIN entry e ON e.id = se.entry_id
-            LEFT JOIN progress p ON p.sentence_id = s.id AND p.dimension = 'pronunciation'
-            LEFT JOIN progress r ON r.sentence_id = s.id AND r.dimension = 'recall'
+            LEFT JOIN progress p ON p.sentence_id = s.id
             WHERE s.level = ? AND s.status = 'active'
             ORDER BY s.sort, se.entry_id
             """, arguments: [level.rawValue])
@@ -59,9 +58,7 @@ nonisolated struct SessionBuilder {
             let id: Int64 = row["sentence_id"]
             let entry = EntryRef(id: row["entry_id"], regional: (row["region"] as String?) != nil)
             if candidates[id] == nil {
-                let seen = [row["p_seen"] as Int64?, row["r_seen"] as Int64?].compactMap { $0 }.max()
-                candidates[id] = Candidate(sentenceId: id, entries: [], pronunciation: row["pronunciation"],
-                                           recall: row["recall"], lastSeenAt: seen)
+                candidates[id] = Candidate(sentenceId: id, entries: [], progress: row["level"], lastSeenAt: row["last_seen_at"])
                 order.append(id)
             }
             candidates[id]?.entries.append(entry)
@@ -69,11 +66,18 @@ nonisolated struct SessionBuilder {
         return order.compactMap { candidates[$0] }
     }
 
-    /// Weight = (6 − mastery)² × (1 + min(days since last practice, 14) / 7) × jitter(0.8–1.2).
+    /// Base weight by ladder level (initial values, adjustable): highest on the first step of each
+    /// mode (1, 3, 5), middle on the second (2, 4, 6, and new sentences), lowest once mastered (7).
+    static func baseWeight(level: Int) -> Double {
+        if level >= MasteryRules.masteredLevel { return 1 }
+        return level % 2 == 1 ? 9 : 4
+    }
+
+    /// Weight = base(level) × (1 + min(days since last practice, 14) / 7) × jitter(0.8–1.2).
     /// Never-practiced sentences count as 14 days.
     static func weight(of candidate: Candidate, now: Date, using rng: inout some RandomNumberGenerator) -> Double {
         let days = candidate.lastSeenAt.map { max(0, now.timeIntervalSince1970 - Double($0)) / 86_400 } ?? maxStaleDays
-        let base = Double((6 - candidate.mastery) * (6 - candidate.mastery))
+        let base = baseWeight(level: candidate.level)
         return base * (1 + min(days, maxStaleDays) / 7) * Double.random(in: 0.8...1.2, using: &rng)
     }
 

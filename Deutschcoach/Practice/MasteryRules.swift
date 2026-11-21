@@ -1,17 +1,20 @@
 import Foundation
 
-/// Mastery rules (DESIGN.md §3.5). The level of one (sentence, dimension) is a pure function of its
-/// event outcomes in order, so all progress can be recomputed from `practice_event` after the
-/// rules change.
+/// Mastery rules (DESIGN.md §3.5): one ladder per sentence, levels 1–7, whose level decides the
+/// mode. The level is a pure function of the sentence's event outcomes in order, so all progress
+/// can be recomputed from `practice_event` after the rules change.
 nonisolated enum MasteryRules {
     static let minLevel = 1
-    static let maxLevel = 5
-    /// Pronunciation and recall levels from which the next mode starts (§3.2).
-    static let modeThreshold = 3
+    static let maxLevel = 7
+    /// A sentence without a `progress` row is at this level.
+    static let newLevel = 2
+    /// The top of the ladder: the sentence is mastered.
+    static let masteredLevel = maxLevel
 
-    /// `pass`: up one level; `fail`: down one level; `not_attempted`: no change.
+    /// Starts at `newLevel`. `pass`: up one level; `fail`: down one level, also across modes;
+    /// `not_attempted`: no change.
     static func level(after outcomes: some Sequence<PracticeOutcome>) -> Int {
-        var level = minLevel
+        var level = newLevel
         for outcome in outcomes {
             switch outcome {
             case .pass: level = min(maxLevel, level + 1)
@@ -22,15 +25,12 @@ nonisolated enum MasteryRules {
         return level
     }
 
-    /// The mode by the sentence's own mastery (§3.2).
-    static func mode(pronunciation: Int, recall: Int) -> SentenceMode {
-        if pronunciation < modeThreshold { return .shadow }
-        if recall < modeThreshold { return .cloze }
-        return .recall
-    }
-
-    /// The mastery dimension a mode affects (§3.3).
-    static func dimension(of mode: SentenceMode) -> MasteryDimension {
-        mode == .shadow ? .pronunciation : .recall
+    /// 1–2 shadowing, 3–4 cloze, 5–7 translation (§3.2).
+    static func mode(level: Int) -> SentenceMode {
+        switch level {
+        case ...2: .shadow
+        case 3...4: .cloze
+        default: .recall
+        }
     }
 }

@@ -30,7 +30,7 @@ struct MigrationTests {
         _ = try AppDatabase(queue)
         _ = try AppDatabase(queue)
         let applied = try queue.read { db in try AppDatabase.migrator.appliedMigrations(db) }
-        #expect(applied == ["v1", "v2", "v3"])
+        #expect(applied == ["v1", "v2", "v3", "v4"])
     }
 
     @Test func v3DropsTheVersion01TablesAndTheirData() throws {
@@ -48,6 +48,33 @@ struct MigrationTests {
             }
             #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM seed_import") == 0)
             #expect(try db.columns(in: "seed_import").map(\.name).contains("origin"))
+        }
+    }
+
+    @Test func v4ReplacesDimensionsWithOneLadderRecomputedFromTheEvents() throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(queue, upTo: "v3")
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO sentence (id, key, seed_id, level, source, de, translations, annotation, sort)
+                VALUES (1, 'a1.x.1', 'x', 'A1', 'goethe', 'Hallo.', '{}', '{}', 1)
+                """)
+            try db.execute(sql: "INSERT INTO progress (sentence_id, dimension, level, last_seen_at) VALUES (1, 'pronunciation', 3, 2), (1, 'recall', 1, 4)")
+            // Two passed shadowings, a passed and a failed cloze; one event of a sentence that is gone.
+            try db.execute(sql: """
+                INSERT INTO practice_event (ts, sentence_id, dimension, mode, outcome) VALUES
+                  (1, 1, 'pronunciation', 'shadow', 'pass'), (2, 1, 'pronunciation', 'shadow', 'pass'),
+                  (3, 1, 'recall', 'cloze', 'pass'), (4, 1, 'recall', 'cloze', 'fail'),
+                  (5, 999, 'recall', 'cloze', 'pass')
+                """)
+        }
+        _ = try AppDatabase(queue)
+        try queue.read { db throws in
+            // 2 → 3 → 4 → 5 → 4
+            #expect(try Progress.fetchAll(db) == [Progress(sentenceId: 1, level: 4, lastSeenAt: 4)])
+            #expect(try PracticeEvent.fetchCount(db) == 5)
+            #expect(try !db.columns(in: "practice_event").map(\.name).contains("dimension"))
+            #expect(try db.columns(in: "progress").map(\.name) == ["sentence_id", "level", "last_seen_at"])
         }
     }
 }
@@ -267,8 +294,8 @@ struct SeedImportTests {
         let before = try await ids(database)
         let removedId = try #require(before["a1.dbg_luft.1"])
         try await database.writer.write { db in
-            try Progress(sentenceId: removedId, dimension: .pronunciation, level: 3, lastSeenAt: 1).insert(db)
-            var event = PracticeEvent(ts: 1, sessionId: nil, sentenceId: removedId, dimension: .pronunciation, mode: .shadow, outcome: .pass)
+            try Progress(sentenceId: removedId, level: 3, lastSeenAt: 1).insert(db)
+            var event = PracticeEvent(ts: 1, sessionId: nil, sentenceId: removedId, mode: .shadow, outcome: .pass)
             try event.insert(db)
         }
 
@@ -381,8 +408,8 @@ struct ClearDataTests {
             var session = Session(level: .a1, status: .active, createdAt: 1)
             try session.insert(db)
             try SessionItem(sessionId: session.id!, position: 1, sentenceId: sentenceId, mode: .shadow, status: .done).insert(db)
-            try Progress(sentenceId: sentenceId, dimension: .pronunciation, level: 2, lastSeenAt: 1).insert(db)
-            var event = PracticeEvent(ts: 1, sessionId: session.id, sentenceId: sentenceId, dimension: .pronunciation, mode: .shadow, outcome: .pass)
+            try Progress(sentenceId: sentenceId, level: 2, lastSeenAt: 1).insert(db)
+            var event = PracticeEvent(ts: 1, sessionId: session.id, sentenceId: sentenceId, mode: .shadow, outcome: .pass)
             try event.insert(db)
         }
         return database

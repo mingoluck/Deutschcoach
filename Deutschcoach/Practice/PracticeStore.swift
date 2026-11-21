@@ -113,15 +113,14 @@ nonisolated struct PracticeStore: Sendable {
     @discardableResult
     func record(_ answer: AnswerRecord, for item: PracticeItem) async throws -> Bool {
         let ts = timestamp
-        let dimension = MasteryRules.dimension(of: item.mode)
         let detail = PracticeEventDetail(heard: answer.heard, engine: answer.engine, reason: answer.reason,
                                          mismatched: answer.mismatched.isEmpty ? nil : answer.mismatched)
         let detailJSON = String(decoding: try JSONEncoder().encode(detail), as: UTF8.self)
         return try await database.writer.write { db in
-            var event = PracticeEvent(ts: ts, sessionId: item.sessionId, sentenceId: item.sentence.id, dimension: dimension,
+            var event = PracticeEvent(ts: ts, sessionId: item.sessionId, sentenceId: item.sentence.id,
                                       mode: item.mode, outcome: answer.outcome, detail: detailJSON)
             try event.insert(db)
-            try Self.recomputeProgress(sentenceId: item.sentence.id, dimension: dimension, db: db)
+            try Self.recomputeProgress(sentenceId: item.sentence.id, db: db)
             let status: ItemStatus = answer.reason == .skipped ? .skipped : .done
             try db.execute(sql: "UPDATE session_item SET status = ? WHERE session_id = ? AND position = ?",
                            arguments: [status.rawValue, item.sessionId, item.position])
@@ -133,32 +132,31 @@ nonisolated struct PracticeStore: Sendable {
         }
     }
 
-    /// Replays all events of (sentence, dimension) through the rules; `last_seen_at` is the
-    /// newest event.
-    static func recomputeProgress(sentenceId: Int64, dimension: MasteryDimension, db: Database) throws {
-        let events = try PracticeEvent
-            .filter(Column("sentence_id") == sentenceId && Column("dimension") == dimension.rawValue)
-            .order(Column("ts"), Column("id"))
-            .fetchAll(db)
-        guard let last = events.last else {
-            try db.execute(sql: "DELETE FROM progress WHERE sentence_id = ? AND dimension = ?", arguments: [sentenceId, dimension.rawValue])
+    /// Replays all events of the sentence, in every mode, through the ladder rules;
+    /// `last_seen_at` is the newest event. Reads only the columns it needs, so the v4 migration
+    /// can use it whatever the event table looks like later.
+    static func recomputeProgress(sentenceId: Int64, db: Database) throws {
+        let rows = try Row.fetchAll(db, sql: "SELECT ts, outcome FROM practice_event WHERE sentence_id = ? ORDER BY ts, id",
+                                    arguments: [sentenceId])
+        guard let last = rows.last else {
+            try db.execute(sql: "DELETE FROM progress WHERE sentence_id = ?", arguments: [sentenceId])
             return
         }
-        try Progress(sentenceId: sentenceId, dimension: dimension, level: MasteryRules.level(after: events.map(\.outcome)),
-                     lastSeenAt: last.ts).upsert(db)
+        let outcomes = rows.compactMap { PracticeOutcome(rawValue: $0["outcome"]) }
+        try Progress(sentenceId: sentenceId, level: MasteryRules.level(after: outcomes), lastSeenAt: last["ts"]).upsert(db)
     }
 
     /// Recomputes all progress from `practice_event`, e.g. after the rules changed (§3.5).
     func recomputeAllProgress() async throws {
-        try await database.writer.write { db in
-            try db.execute(sql: "DELETE FROM progress")
-            let keys = try Row.fetchAll(db, sql: "SELECT DISTINCT sentence_id, dimension FROM practice_event")
-            for row in keys {
-                guard let dimension = MasteryDimension(rawValue: row["dimension"]) else { continue }
-                // Events of sentences that no longer exist cannot have a progress row.
-                guard try Sentence.exists(db, key: row["sentence_id"] as Int64) else { continue }
-                try Self.recomputeProgress(sentenceId: row["sentence_id"], dimension: dimension, db: db)
-            }
+        try await database.writer.write { db in try Self.recomputeAllProgress(db) }
+    }
+
+    static func recomputeAllProgress(_ db: Database) throws {
+        try db.execute(sql: "DELETE FROM progress")
+        // Events of sentences that no longer exist cannot have a progress row.
+        let ids = try Int64.fetchAll(db, sql: "SELECT DISTINCT sentence_id FROM practice_event WHERE sentence_id IN (SELECT id FROM sentence)")
+        for id in ids {
+            try recomputeProgress(sentenceId: id, db: db)
         }
     }
 

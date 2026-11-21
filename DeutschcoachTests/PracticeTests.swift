@@ -26,28 +26,26 @@ struct SplitMix64: RandomNumberGenerator {
 // MARK: - Mastery rules (DESIGN.md §3.5)
 
 struct MasteryRulesTests {
-    @Test func passUpFailDownNotAttemptedNoChange() {
-        #expect(MasteryRules.level(after: []) == 1)
-        #expect(MasteryRules.level(after: [.pass]) == 2)
-        #expect(MasteryRules.level(after: [.pass, .pass, .fail]) == 2)
-        #expect(MasteryRules.level(after: [.pass, .notAttempted, .pass]) == 3)
+    @Test func newSentenceStartsAtTwoPassUpFailDown() {
+        #expect(MasteryRules.level(after: []) == 2)
+        #expect(MasteryRules.level(after: [.pass]) == 3)
+        #expect(MasteryRules.level(after: [.pass, .pass, .fail]) == 3)
+        #expect(MasteryRules.level(after: [.pass, .notAttempted, .pass]) == 4)
     }
 
-    @Test func levelsStayWithinOneToFive() {
-        #expect(MasteryRules.level(after: [.fail, .fail]) == 1)
-        #expect(MasteryRules.level(after: Array(repeating: .pass, count: 9)) == 5)
+    @Test func levelsStayWithinOneToSeven() {
+        #expect(MasteryRules.level(after: [.fail, .fail, .fail]) == 1)
+        #expect(MasteryRules.level(after: Array(repeating: .pass, count: 9)) == 7)
     }
 
-    @Test func modeTable() {
-        #expect(MasteryRules.mode(pronunciation: 1, recall: 5) == .shadow)
-        #expect(MasteryRules.mode(pronunciation: 2, recall: 1) == .shadow)
-        #expect(MasteryRules.mode(pronunciation: 3, recall: 2) == .cloze)
-        #expect(MasteryRules.mode(pronunciation: 3, recall: 3) == .recall)
-        // Two passed shadowings take a new sentence to cloze (§3.5).
-        #expect(MasteryRules.mode(pronunciation: MasteryRules.level(after: [.pass, .pass]), recall: 1) == .cloze)
-        #expect(MasteryRules.dimension(of: .shadow) == .pronunciation)
-        #expect(MasteryRules.dimension(of: .cloze) == .recall)
-        #expect(MasteryRules.dimension(of: .recall) == .recall)
+    @Test func modeByLevel() {
+        #expect([1, 2].map(MasteryRules.mode(level:)) == [.shadow, .shadow])
+        #expect([3, 4].map(MasteryRules.mode(level:)) == [.cloze, .cloze])
+        #expect([5, 6, 7].map(MasteryRules.mode(level:)) == [.recall, .recall, .recall])
+        // One passed shadowing takes a new sentence to cloze; a failed cloze goes back (§3.5).
+        #expect(MasteryRules.mode(level: MasteryRules.level(after: [.pass])) == .cloze)
+        #expect(MasteryRules.mode(level: MasteryRules.level(after: [.pass, .fail])) == .shadow)
+        #expect(MasteryRules.mode(level: MasteryRules.level(after: [.pass, .pass, .pass, .fail])) == .cloze)
     }
 }
 
@@ -155,12 +153,12 @@ struct SessionBuilderTests {
     private typealias Candidate = SessionBuilder.Candidate
 
     private func candidate(_ id: Int64, entries: [Int64]? = nil, regional: Bool = false,
-                           pronunciation: Int? = nil, recall: Int? = nil, seenDaysAgo: Double? = nil) -> Candidate {
+                           level: Int? = nil, seenDaysAgo: Double? = nil) -> Candidate {
         let now = Date(timeIntervalSince1970: 1_000_000_000)
         return Candidate(
             sentenceId: id,
             entries: (entries ?? [id]).map { .init(id: $0, regional: regional) },
-            pronunciation: pronunciation, recall: recall,
+            progress: level,
             lastSeenAt: seenDaysAgo.map { Int64(now.timeIntervalSince1970 - $0 * 86_400) }
         )
     }
@@ -168,7 +166,7 @@ struct SessionBuilderTests {
     private let now = Date(timeIntervalSince1970: 1_000_000_000)
 
     @Test func atMostFiveNewWhenThereIsEnoughReview() {
-        let pool = (1...8).map { candidate($0) } + (11...16).map { candidate($0, pronunciation: 2, recall: 1, seenDaysAgo: 1) }
+        let pool = (1...8).map { candidate($0) } + (11...16).map { candidate($0, level: 2, seenDaysAgo: 1) }
         for seed in 0..<20 {
             var rng = SplitMix64(seed: UInt64(seed))
             let picks = SessionBuilder.pick(from: pool, now: now, using: &rng)
@@ -187,7 +185,7 @@ struct SessionBuilderTests {
     @Test func onePerEntryUnlessThereIsNoOtherChoice() {
         // Sentences 1–3 share entry 100; ten others have their own entries.
         let shared = (1...3).map { candidate($0, entries: [100]) }
-        let others = (11...20).map { candidate($0, pronunciation: 2, recall: 1, seenDaysAgo: 2) }
+        let others = (11...20).map { candidate($0, level: 2, seenDaysAgo: 2) }
         for seed in 0..<20 {
             var rng = SplitMix64(seed: UInt64(seed))
             let picks = SessionBuilder.pick(from: shared + others, now: now, using: &rng)
@@ -214,12 +212,12 @@ struct SessionBuilderTests {
     }
 
     @Test func modeFollowsTheSentenceAndClozeBlanksACommonEntry() {
-        var cloze = candidate(2, entries: [20, 21], pronunciation: 3, recall: 1, seenDaysAgo: 1)
+        var cloze = candidate(2, entries: [20, 21], level: 3, seenDaysAgo: 1)
         cloze.entries[0].regional = true
         let pool = [
-            candidate(1, pronunciation: 2, recall: 1, seenDaysAgo: 1),
+            candidate(1, level: 2, seenDaysAgo: 1),
             cloze,
-            candidate(3, pronunciation: 4, recall: 3, seenDaysAgo: 1),
+            candidate(3, level: 5, seenDaysAgo: 1),
         ]
         var rng = SplitMix64(seed: 5)
         let picks = Dictionary(uniqueKeysWithValues: SessionBuilder.pick(from: pool, now: now, using: &rng).map { ($0.sentenceId, $0) })
@@ -233,11 +231,16 @@ struct SessionBuilderTests {
         func average(_ candidate: Candidate) -> Double {
             (0..<200).map { _ in SessionBuilder.weight(of: candidate, now: now, using: &rng) }.reduce(0, +) / 200
         }
-        let weakStale = average(candidate(1, pronunciation: 1, recall: 1, seenDaysAgo: 14))
-        let strongFresh = average(candidate(2, pronunciation: 5, recall: 4, seenDaysAgo: 0))
+        let weakStale = average(candidate(1, level: 1, seenDaysAgo: 14))
+        let masteredFresh = average(candidate(2, level: 7, seenDaysAgo: 0))
         let newOne = average(candidate(3))
-        #expect(weakStale > strongFresh * 10)
-        #expect(abs(newOne - weakStale) / weakStale < 0.1)
+        let secondStepStale = average(candidate(4, level: 2, seenDaysAgo: 14))
+        #expect(weakStale > masteredFresh * 10)
+        #expect(abs(newOne - secondStepStale) / secondStepStale < 0.1)
+    }
+
+    @Test func baseWeightIsHighOnTheFirstStepOfEachModeAndLowWhenMastered() {
+        #expect((1...7).map(SessionBuilder.baseWeight(level:)) == [9, 4, 9, 4, 9, 4, 1])
     }
 }
 
@@ -292,8 +295,8 @@ struct PracticeStoreTests {
 
         try await database.writer.read { db throws in
             let progress = try Progress.order(Column("sentence_id")).fetchAll(db)
-            #expect(progress == [Progress(sentenceId: ids[0], dimension: .pronunciation, level: 2, lastSeenAt: 1_000),
-                                 Progress(sentenceId: ids[1], dimension: .pronunciation, level: 1, lastSeenAt: 2_000)])
+            #expect(progress == [Progress(sentenceId: ids[0], level: 3, lastSeenAt: 1_000),
+                                 Progress(sentenceId: ids[1], level: 2, lastSeenAt: 2_000)])
             let statuses = try SessionItem.order(Column("position")).fetchAll(db).map(\.status)
             #expect(statuses == [.done, .skipped])
             let sessionRow = try #require(try Session.fetchOne(db, key: session))
@@ -316,7 +319,7 @@ struct PracticeStoreTests {
         let before = try await database.writer.read { db in try Progress.fetchAll(db) }
         try await store.recomputeAllProgress()
         #expect(try await database.writer.read { db in try Progress.fetchAll(db) } == before)
-        #expect(before.map(\.dimension) == [.recall])
+        #expect(before.map(\.level) == [3])
     }
 
     @Test func pruningKeepsTheTenMostRecentSessionsAndAllEvents() async throws {
@@ -334,7 +337,7 @@ struct PracticeStoreTests {
             #expect(try Session.fetchCount(db) == 10)
             #expect(try Session.order(Column("finished_at")).fetchAll(db).first?.finishedAt == 3)
             #expect(try PracticeEvent.fetchCount(db) == 12)
-            #expect(try Progress.fetchOne(db, key: ["sentence_id": id, "dimension": "pronunciation"])?.level == 5)
+            #expect(try Progress.fetchOne(db, key: id)?.level == 7)
         }
     }
 }
@@ -381,9 +384,8 @@ struct PracticeEngineTests {
         let clozeId = try await sentenceId("a1.dbg_kaffee.1", in: database)
         let recallId = try await sentenceId("a1.dbg_bahnhof.1", in: database)
         try await database.writer.write { db in
-            try Progress(sentenceId: clozeId, dimension: .pronunciation, level: 3, lastSeenAt: 0).insert(db)
-            try Progress(sentenceId: recallId, dimension: .pronunciation, level: 3, lastSeenAt: 0).insert(db)
-            try Progress(sentenceId: recallId, dimension: .recall, level: 3, lastSeenAt: 0).insert(db)
+            try Progress(sentenceId: clozeId, level: 3, lastSeenAt: 0).insert(db)
+            try Progress(sentenceId: recallId, level: 5, lastSeenAt: 0).insert(db)
         }
 
         let engine = makeEngine(database)

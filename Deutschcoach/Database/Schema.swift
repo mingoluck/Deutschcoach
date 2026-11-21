@@ -1,5 +1,6 @@
-// v3 is the schema of docs/DESIGN.md §2.2 (version 0.2); keep it identical to the design document.
-// v1 and v2 are the version 0.1 schema; v3 drops their tables.
+// v3 + v4 give the schema of docs/DESIGN.md §2.2 (version 0.2); keep them identical to the design
+// document. v1 and v2 are the version 0.1 schema; v3 drops their tables. v4 (M13) replaces the
+// two mastery dimensions with one ladder.
 // Never edit a shipped migration; add a new one instead.
 
 nonisolated enum Schema {
@@ -236,5 +237,20 @@ CREATE TABLE session_item (
   status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','skipped')),
   PRIMARY KEY (session_id, position)
 );
+"""
+
+    /// M13: one mastery ladder per sentence instead of two dimensions (DESIGN.md §3.5). The
+    /// migration then recomputes `progress` from `practice_event` (see `AppDatabase.migrator`).
+    static let v4 = """
+DROP TABLE progress;
+
+-- one row per practiced sentence: its place on the mastery ladder
+CREATE TABLE progress (
+  sentence_id  INTEGER PRIMARY KEY REFERENCES sentence(id),
+  level        INTEGER NOT NULL CHECK (level BETWEEN 1 AND 7),
+  last_seen_at INTEGER
+);
+
+ALTER TABLE practice_event DROP COLUMN dimension;
 """
 }

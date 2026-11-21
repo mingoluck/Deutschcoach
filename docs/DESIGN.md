@@ -15,7 +15,7 @@ A macOS app that coaches you in speaking German:
 1. The app ships with a database of German **example sentences**, taken from the Goethe-Institut word lists A1, A2 and B1. Each sentence belongs to one level and to one or more **entries** (headwords of the list), and comes with a native-language translation and a grammatical annotation, all prepared offline (§4).
 2. The user picks a level; practice draws only from that level's sentences. The local engine picks **a session of 10** sentences based on the user's per-sentence mastery.
 3. The UI shows only: the German sentence, the grammatical annotation (colors, line styles, small text), and the native-language translation. It never shows explanations or definitions.
-4. Three practice modes: shadowing, cloze, and translation. The user speaks; the system recognizes the answer, compares it with the sentence, and updates mastery.
+4. Three practice modes: shadowing, cloze, and translation. The user speaks; the system recognizes the answer, compares it with the sentence, and moves the sentence one step up or down a single mastery ladder whose position decides the mode (§3.5).
 5. Everything works offline. No LLM is used in this version.
 
 ---
@@ -47,7 +47,7 @@ A macOS app that coaches you in speaking German:
 
 ### 2.2 Schema
 
-The 0.2 schema replaces the 0.1 tables in a new migration: the 0.1 content tables (`element`, `vocab_detail`, `grammar_detail`, `pattern_detail`, `element_link`, `word_form`) and user tables (`mastery`, `practice_event`, `batch`, `sentence`, `sentence_element`) are dropped, and the old development data is discarded.
+The 0.2 schema replaces the 0.1 tables in a new migration: the 0.1 content tables (`element`, `vocab_detail`, `grammar_detail`, `pattern_detail`, `element_link`, `word_form`) and user tables (`mastery`, `practice_event`, `batch`, `sentence`, `sentence_element`) are dropped, and the old development data is discarded. A later migration (M13) replaced the two mastery dimensions with one ladder: `progress` has one row per sentence, `practice_event` lost its `dimension` column, and progress was recomputed from the events. The SQL below is the current schema.
 
 ```sql
 -- ===== Content layer =====
@@ -105,12 +105,11 @@ CREATE TABLE sentence_entry (
 );
 
 -- ===== User layer =====
+-- one row per practiced sentence: its place on the mastery ladder (§3.5)
 CREATE TABLE progress (
-  sentence_id  INTEGER NOT NULL REFERENCES sentence(id),
-  dimension    TEXT NOT NULL CHECK (dimension IN ('pronunciation','recall')),
-  level        INTEGER NOT NULL DEFAULT 1 CHECK (level BETWEEN 1 AND 5),
-  last_seen_at INTEGER,
-  PRIMARY KEY (sentence_id, dimension)
+  sentence_id  INTEGER PRIMARY KEY REFERENCES sentence(id),
+  level        INTEGER NOT NULL CHECK (level BETWEEN 1 AND 7),
+  last_seen_at INTEGER
 );
 
 -- Append-only practice events, kept forever. progress can be recomputed from them
@@ -119,7 +118,6 @@ CREATE TABLE practice_event (
   ts          INTEGER NOT NULL,
   session_id  INTEGER,                 -- no foreign key, so events survive when sessions are pruned
   sentence_id INTEGER NOT NULL,
-  dimension   TEXT NOT NULL,           -- 'pronunciation' | 'recall'
   mode        TEXT NOT NULL,           -- 'shadow' | 'cloze' | 'recall'
   outcome     TEXT NOT NULL CHECK (outcome IN ('pass','fail','not_attempted')),
   detail      JSON                     -- recognized text, mismatched token indices, engine, reason: skipped|no_speech
@@ -272,28 +270,35 @@ Two actions in Settings › “词库” (Library):
 ### 3.2 Sentence Selection and Mode Assignment
 
 - **Candidates**: sentences with `status = 'active'` and `level` = the user level, except those whose linked entries are all regional (`region` not null). Regional sentences stay in the database but are not practiced in 0.2 (§8).
-- **Weight** = `(6 − mastery)² × (1 + min(days since last practice, 14) / 7) × jitter(0.8–1.2)`, where mastery is the lower of the sentence's two dimensions. Never-practiced sentences count as 14 days.
+- **Weight** = `base(level) × (1 + min(days since last practice, 14) / 7) × jitter(0.8–1.2)`. Never-practiced sentences count as level 2 and 14 days. The base weight (initial values, adjustable) is highest on the first step of each mode and lowest once mastered:
+
+| Level | Base weight |
+|---|---|
+| 1, 3, 5 | 9 |
+| 2, 4, 6 (and new sentences) | 4 |
+| 7 (mastered) | 1 |
+
 - **New sentence window**: a sentence is *new* when it has no `progress` row. A session contains at most 5 new sentences, picked at random among the new ones; the rest are review. The window size is an initial value in code, adjustable.
 - **Variety**: within a session, at most one sentence per entry, and no sentence twice.
 - **Running out of candidates** (small levels): first widen the new window, then allow several sentences of one entry. A sentence never appears twice in a session; when the level has fewer than 10 practicable sentences, the session is shorter.
 - **User level**: chosen in Settings (A1, A2, B1; default A1; stored in UserDefaults). Practice uses only that level's sentences; mixing levels is left for later (§8).
-- **Mode** by the sentence's own mastery:
+- **Mode** by the sentence's level (§3.5):
 
-| Condition | Mode |
+| Level | Mode |
 |---|---|
-| Pronunciation mastery < 3 | Shadowing `shadow` |
-| Pronunciation ≥ 3 and recall mastery < 3 | Cloze `cloze` |
-| Recall mastery ≥ 3 | Translation `recall` |
+| 1–2 (new sentences: 2) | Shadowing `shadow` |
+| 3–4 | Cloze `cloze` |
+| 5–7 | Translation `recall` |
 
 - **Cloze blanks**: one linked entry is chosen at random (non-regional first) and stored in `session_item.blank_entry_id`; all of its tokens are blanked (both parts of a separable verb).
 
 ### 3.3 The Three Modes
 
-| Mode | Shown | What the user does | Dimension affected |
-|---|---|---|---|
-| Shadowing “复述” | Full sentence + annotation + translation, read aloud | Repeats the sentence | `pronunciation` |
-| Cloze “填空” | Sentence with blanks + full translation, not read aloud. Blanks keep their case color and constituent lines; the other words' annotations are shown as usual before answering | Says the full sentence | `recall` |
-| Translation “翻译” | Translation only | Says the full sentence | `recall` |
+| Mode | Shown | What the user does |
+|---|---|---|
+| Shadowing “复述” | Full sentence + annotation + translation, read aloud | Repeats the sentence |
+| Cloze “填空” | Sentence with blanks + full translation, not read aloud. Blanks keep their case color and constituent lines; the other words' annotations are shown as usual before answering | Says the full sentence |
+| Translation “翻译” | Translation only | Says the full sentence |
 
 - Recording ends when the user taps a button.
 - After answering, the correct full sentence (with annotation) is shown and read aloud; on a failure, the compared reading is shown below it with the mismatched words marked.
@@ -310,18 +315,26 @@ Two actions in Settings › “词库” (Library):
 4. No valid speech recognized, or the user tapped Skip → `not_attempted`.
 5. On a failure, the reading with fewer differences is shown under the answer with the mismatched words marked (and extra words listed); `detail.mismatched` holds the word indices of that reading, and `detail.heard` the transcription, from which the history recomputes the comparison.
 
-- One event per sentence per answer: `pronunciation` for shadowing, `recall` for cloze and translation.
+- One event per sentence per answer; every mode moves the same ladder (§3.5).
 - There is no lenient matching of inflected forms and no paraphrase judge in 0.2; an answer that differs from the sentence fails.
 - Incomplete attempts (quitting midway) are discarded: no event is written, the item stays `pending`, and it continues next time.
 - The event, the `progress` update, and `session_item.status` are written in a single transaction.
 
 ### 3.5 Mastery Rules (initial values, adjustable)
 
-- `pass`: that dimension goes up one level (maximum 5).
-- `fail`: that dimension drops one level (minimum 1).
+Each sentence has one **level** from 1 to 7 on a single ladder; the level decides the mode (§3.2), and level 7 means **mastered**.
+
+```
+level:  1   2 | 3   4 | 5   6   7
+mode:  shadow | cloze | recall (7 = mastered)
+```
+
+- A new sentence starts at level 2.
+- `pass`: up one level (maximum 7).
+- `fail`: down one level (minimum 1), also across modes: a failed cloze at level 3 goes back to shadowing, a failed translation at level 5 back to cloze.
 - `not_attempted`: no change.
-- So a new sentence needs two passed shadowings to reach cloze, and two passed clozes to reach translation. The rules live in code; after adjusting them, all progress can be recomputed by replaying `practice_event`. Every event updates `last_seen_at`.
-- `progress` rows are not created in advance; a missing row means level 1 with no `last_seen_at`.
+- So one passed shadowing takes a new sentence to cloze, and two passed clozes take it to translation. A mastered sentence is still picked now and then (lowest weight) and practiced as translation. The rules live in code; after adjusting them, all progress can be recomputed by replaying `practice_event`. Every event updates `last_seen_at`.
+- `progress` rows are not created in advance; a missing row means a new sentence: level 2 with no `last_seen_at`.
 
 ---
 
@@ -506,6 +519,7 @@ Milestones M1–M7 built version 0.1 (project setup, speech loop, annotation ren
 | M10 | **A1 seed.** Clean, translate, annotate, review and validate the A1 list including its word groups (§4); `seeds/goethe_a1.json` and its skipped report; bundled with the app | Validation test passes; the project owner spot-checks the seed and practices A1 in the app |
 | M11 | **A2 seed**, as M10 | As M10 |
 | M12 | **B1 seed**, as M10 (in several batches) | As M10 |
+| M13 | **Mastery ladder.** Replace the two mastery dimensions with one level 1–7 per sentence (§3.5), mode by level and new base weights (§3.2); migration: `progress` with one row per sentence, `practice_event.dimension` dropped, progress recomputed from the events | Unit tests pass; an existing database migrates with its history intact and practice continues |
 
 Make one git commit after each milestone is completed; the seed milestones may commit once per batch.
 

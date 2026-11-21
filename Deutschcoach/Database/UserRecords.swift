@@ -17,23 +17,19 @@ nonisolated enum SessionStatus: String, Codable, Sendable {
     case active, done
 }
 
-nonisolated enum MasteryDimension: String, Codable, Sendable, CaseIterable {
-    case pronunciation, recall
-}
-
 nonisolated enum PracticeOutcome: String, Codable, Sendable {
     case pass, fail
     case notAttempted = "not_attempted"
 }
 
-/// Per-sentence mastery. A missing row means level 1, never seen (DESIGN.md §3.5).
+/// A sentence's place on the mastery ladder, 1–7. A missing row means a new sentence:
+/// `MasteryRules.newLevel`, never seen (DESIGN.md §3.5).
 nonisolated struct Progress: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "progress"
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
     static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
 
     var sentenceId: Int64
-    var dimension: MasteryDimension
     var level: Int
     /// Unix time in seconds.
     var lastSeenAt: Int64?
@@ -50,7 +46,6 @@ nonisolated struct PracticeEvent: Codable, Sendable, Equatable, FetchableRecord,
     var ts: Int64
     var sessionId: Int64?
     var sentenceId: Int64
-    var dimension: MasteryDimension
     var mode: SentenceMode
     var outcome: PracticeOutcome
     /// JSON-encoded `PracticeEventDetail`.

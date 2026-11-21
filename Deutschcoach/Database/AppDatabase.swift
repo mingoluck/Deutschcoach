@@ -25,6 +25,11 @@ nonisolated final class AppDatabase: Sendable {
         migrator.registerMigration("v3") { db in
             try db.execute(sql: Schema.v3)
         }
+        migrator.registerMigration("v4") { db in
+            try db.execute(sql: Schema.v4)
+            // progress is a cache of the events under the current rules (DESIGN.md §3.5).
+            try PracticeStore.recomputeAllProgress(db)
+        }
         return migrator
     }
 }
