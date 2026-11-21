@@ -10,15 +10,10 @@ nonisolated struct SessionBuilder {
     /// Days since last practice stop adding weight after this.
     static let maxStaleDays = 14.0
 
-    struct EntryRef: Sendable, Equatable {
-        var id: Int64
-        /// Austrian or Swiss usage.
-        var regional: Bool
-    }
-
     struct Candidate: Sendable, Equatable {
         var sentenceId: Int64
-        var entries: [EntryRef]
+        /// Ids of the linked entries.
+        var entries: [Int64]
         /// The `progress` level, nil for a new sentence.
         var progress: Int?
         /// Unix time in seconds of the last event, nil if never practiced.
@@ -29,34 +24,29 @@ nonisolated struct SessionBuilder {
         /// The ladder level; a new sentence counts as `MasteryRules.newLevel` (§3.5).
         var level: Int { progress ?? MasteryRules.newLevel }
         var mode: SentenceMode { MasteryRules.mode(level: level) }
-        /// Practiced only when at least one linked entry is common German (§3.2).
-        var isPracticable: Bool { entries.contains { !$0.regional } }
     }
 
     struct Pick: Sendable, Equatable {
         var sentenceId: Int64
         var mode: SentenceMode
-        /// Cloze: the entry whose tokens are blanked.
-        var blankEntryId: Int64?
     }
 
-    /// Active sentences of `level` with their entries and progress.
-    static func loadCandidates(level: CEFRLevel, from db: Database) throws -> [Candidate] {
+    /// Active sentences of the libraries `seedIds` with their entries and progress.
+    static func loadCandidates(seedIds: [String], from db: Database) throws -> [Candidate] {
         var candidates: [Int64: Candidate] = [:]
         var order: [Int64] = []
         let rows = try Row.fetchAll(db, sql: """
-            SELECT s.id AS sentence_id, se.entry_id, e.region,
+            SELECT s.id AS sentence_id, se.entry_id,
                    p.level, p.last_seen_at
             FROM sentence s
             JOIN sentence_entry se ON se.sentence_id = s.id
-            JOIN entry e ON e.id = se.entry_id
             LEFT JOIN progress p ON p.sentence_id = s.id
-            WHERE s.level = ? AND s.status = 'active'
-            ORDER BY s.sort, se.entry_id
-            """, arguments: [level.rawValue])
+            WHERE s.seed_id IN (SELECT value FROM json_each(?)) AND s.status = 'active'
+            ORDER BY s.seed_id, s.sort, se.entry_id
+            """, arguments: [String(decoding: try JSONEncoder().encode(seedIds), as: UTF8.self)])
         for row in rows {
             let id: Int64 = row["sentence_id"]
-            let entry = EntryRef(id: row["entry_id"], regional: (row["region"] as String?) != nil)
+            let entry: Int64 = row["entry_id"]
             if candidates[id] == nil {
                 candidates[id] = Candidate(sentenceId: id, entries: [], progress: row["level"], lastSeenAt: row["last_seen_at"])
                 order.append(id)
@@ -83,10 +73,10 @@ nonisolated struct SessionBuilder {
 
     /// Up to `sessionSize` sentences, no sentence twice. Stages: at most `newWindow` new
     /// sentences and one sentence per entry; then any number of new ones; then several
-    /// sentences of one entry. A session may have fewer than 10 sentences when the level has
+    /// sentences of one entry. A session may have fewer than 10 sentences when the libraries have
     /// too few.
     static func pick(from candidates: [Candidate], now: Date = Date(), using rng: inout some RandomNumberGenerator) -> [Pick] {
-        let pool = candidates.filter(\.isPracticable)
+        let pool = candidates
         var chosen: [Candidate] = []
         var usedEntries: Set<Int64> = []
         var newCount = 0
@@ -96,27 +86,19 @@ nonisolated struct SessionBuilder {
                 let admissible = pool.filter { candidate in
                     if chosen.contains(where: { $0.sentenceId == candidate.sentenceId }) { return false }
                     if stage == 0, candidate.isNew, newCount >= newWindow { return false }
-                    if stage < 2, candidate.entries.contains(where: { usedEntries.contains($0.id) }) { return false }
+                    if stage < 2, candidate.entries.contains(where: usedEntries.contains) { return false }
                     return true
                 }
                 guard !admissible.isEmpty else { break }
                 let weights = admissible.map { weight(of: $0, now: now, using: &rng) }
                 let next = admissible[weightedIndex(weights, using: &rng)]
                 chosen.append(next)
-                usedEntries.formUnion(next.entries.map(\.id))
+                usedEntries.formUnion(next.entries)
                 if next.isNew { newCount += 1 }
             }
         }
 
-        return chosen.map { candidate in
-            let mode = candidate.mode
-            var blank: Int64?
-            if mode == .cloze {
-                let common = candidate.entries.filter { !$0.regional }
-                blank = (common.isEmpty ? candidate.entries : common).randomElement(using: &rng)?.id
-            }
-            return Pick(sentenceId: candidate.sentenceId, mode: mode, blankEntryId: blank)
-        }
+        return chosen.map { Pick(sentenceId: $0.sentenceId, mode: $0.mode) }
     }
 
     private static func weightedIndex(_ weights: [Double], using rng: inout some RandomNumberGenerator) -> Int {

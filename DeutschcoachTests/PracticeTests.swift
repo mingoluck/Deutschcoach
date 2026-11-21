@@ -152,12 +152,12 @@ struct AnswerMatcherTests {
 struct SessionBuilderTests {
     private typealias Candidate = SessionBuilder.Candidate
 
-    private func candidate(_ id: Int64, entries: [Int64]? = nil, regional: Bool = false,
+    private func candidate(_ id: Int64, entries: [Int64]? = nil,
                            level: Int? = nil, seenDaysAgo: Double? = nil) -> Candidate {
         let now = Date(timeIntervalSince1970: 1_000_000_000)
         return Candidate(
             sentenceId: id,
-            entries: (entries ?? [id]).map { .init(id: $0, regional: regional) },
+            entries: entries ?? [id],
             progress: level,
             lastSeenAt: seenDaysAgo.map { Int64(now.timeIntervalSince1970 - $0 * 86_400) }
         )
@@ -203,27 +203,16 @@ struct SessionBuilderTests {
         #expect(picks.map(\.sentenceId).sorted() == [1, 2, 3, 4])
     }
 
-    @Test func regionalSentencesAreNotPracticed() {
-        var mixed = candidate(2, entries: [20, 21])
-        mixed.entries[1].regional = true
-        let pool = [candidate(1, regional: true), mixed]
-        var rng = SplitMix64(seed: 1)
-        #expect(SessionBuilder.pick(from: pool, now: now, using: &rng).map(\.sentenceId) == [2])
-    }
-
-    @Test func modeFollowsTheSentenceAndClozeBlanksACommonEntry() {
-        var cloze = candidate(2, entries: [20, 21], level: 3, seenDaysAgo: 1)
-        cloze.entries[0].regional = true
+    @Test func modeFollowsTheSentenceLevel() {
         let pool = [
             candidate(1, level: 2, seenDaysAgo: 1),
-            cloze,
+            candidate(2, entries: [20, 21], level: 3, seenDaysAgo: 1),
             candidate(3, level: 5, seenDaysAgo: 1),
+            candidate(4),
         ]
         var rng = SplitMix64(seed: 5)
-        let picks = Dictionary(uniqueKeysWithValues: SessionBuilder.pick(from: pool, now: now, using: &rng).map { ($0.sentenceId, $0) })
-        #expect(picks[1]?.mode == .shadow && picks[1]?.blankEntryId == nil)
-        #expect(picks[2]?.mode == .cloze && picks[2]?.blankEntryId == 21)
-        #expect(picks[3]?.mode == .recall)
+        let picks = Dictionary(uniqueKeysWithValues: SessionBuilder.pick(from: pool, now: now, using: &rng).map { ($0.sentenceId, $0.mode) })
+        #expect(picks == [1: .shadow, 2: .cloze, 3: .recall, 4: .shadow])
     }
 
     @Test func weakAndStaleSentencesWeighMore() {
@@ -263,18 +252,67 @@ struct PracticeStoreTests {
         let database = try await seededDatabase()
         let store = PracticeStore(database: database)
         let sentence = try await sentenceId("a1.dbg_abfahren.1", in: database)
-        let entry = try await database.writer.read { db throws in
-            try #require(try Int64.fetchOne(db, sql: "SELECT id FROM entry WHERE key = 'a1.dbg_abfahren'"))
-        }
-        let id = try #require(try await store.createSession(level: .a1, picks: [
-            .init(sentenceId: sentence, mode: .cloze, blankEntryId: entry),
+        let id = try #require(try await store.createSession(seedIds: [Fixture.seedId], picks: [
+            .init(sentenceId: sentence, mode: .cloze),
         ]))
         let item = try #require(try await store.nextItem(inSession: id))
-        #expect(item.mode == .cloze && item.blanks == [1, 5])
+        // §3.2: every linked entry is blanked: abfahren (fahren … ab) and Uhr.
+        #expect(item.mode == .cloze && item.blanks == [1, 4, 5])
         #expect(item.sentence.key == "a1.dbg_abfahren.1")
         #expect(item.translation(for: "en") == "We leave at twelve o'clock.")
+        #expect(item.regional.isEmpty)
         #expect(try await store.progress(ofSession: id) == (0, 1))
-        #expect(try await store.createSession(level: .a1, picks: []) == nil)
+        #expect(try await store.createSession(seedIds: [Fixture.seedId], picks: []) == nil)
+        #expect(try await database.writer.read { db in try Session.fetchAll(db).map(\.seedIds) } == [[Fixture.seedId]])
+    }
+
+    @Test func regionalSentencesCarryTheirEntries() async throws {
+        let database = try await seededDatabase()
+        let store = PracticeStore(database: database)
+        let sentence = try await sentenceId("a1.dbg_parkieren.1", in: database)
+        let id = try #require(try await store.createSession(seedIds: [Fixture.seedId], picks: [.init(sentenceId: sentence, mode: .recall)]))
+        let item = try #require(try await store.nextItem(inSession: id))
+        #expect(item.regional == [RegionalEntry(region: .ch, headword: "parkieren (CH) → D, A: parken")])
+        #expect(item.blanks.isEmpty)
+    }
+
+    @Test func endingTheActiveSessionKeepsAnsweredItemsOnly() async throws {
+        let database = try await seededDatabase()
+        let store = PracticeStore(database: database)
+        let ids = try await [sentenceId("a1.dbg_rot.1", in: database), sentenceId("a1.dbg_kaffee.1", in: database)]
+        let picks: [SessionBuilder.Pick] = ids.map { .init(sentenceId: $0, mode: .shadow) }
+
+        let answered = try #require(try await store.createSession(seedIds: [Fixture.seedId], picks: picks))
+        try await store.record(.init(outcome: .pass, mismatched: []), for: try #require(try await store.nextItem(inSession: answered)))
+        try await store.endActiveSession()
+        try await database.writer.read { db throws in
+            let session = try #require(try Session.fetchOne(db, key: answered))
+            #expect(session.status == .done && session.finishedAt != nil)
+            #expect(try SessionItem.filter(Column("session_id") == answered).fetchCount(db) == 1)
+        }
+
+        let untouched = try #require(try await store.createSession(seedIds: [Fixture.seedId], picks: picks))
+        try await store.endActiveSession()
+        #expect(try await database.writer.read { db in try Session.fetchOne(db, key: untouched) } == nil)
+        #expect(try await store.activeSession() == nil)
+    }
+
+    @Test func libraryProgressCountsSentencesByStage() async throws {
+        let database = try await seededDatabase()
+        let keys = ["a1.dbg_rot.1", "a1.dbg_kaffee.1", "a1.dbg_bahnhof.1", "a1.dbg_luft.1", "a1.dbg_luege.1"]
+        var ids: [Int64] = []
+        for key in keys { ids.append(try await sentenceId(key, in: database)) }
+        try await database.writer.write { [ids] db in
+            for (id, level) in zip(ids, [1, 2, 3, 6, 7]) {
+                try Progress(sentenceId: id, level: level, lastSeenAt: 0).insert(db)
+            }
+        }
+        let progress = try #require(try await PracticeStore(database: database).libraryProgress(seedId: Fixture.seedId))
+        #expect(progress.title == "Debug A1")
+        #expect(progress.level == .a1)
+        #expect((progress.new, progress.shadow, progress.cloze, progress.recall, progress.mastered) == (7, 2, 1, 1, 1))
+        #expect(progress.total == 12 && progress.practiced == 5)
+        #expect(try await PracticeStore(database: database).libraryProgress(seedId: "missing") == nil)
     }
 
     @Test func recordWritesEventProgressAndStatusTogether() async throws {
@@ -282,7 +320,7 @@ struct PracticeStoreTests {
         let clock = TestClock(1_000)
         let store = PracticeStore(database: database, now: { clock.date })
         let ids = try await [sentenceId("a1.dbg_rot.1", in: database), sentenceId("a1.dbg_kaffee.1", in: database)]
-        let session = try #require(try await store.createSession(level: .a1, picks: ids.map { .init(sentenceId: $0, mode: .shadow) }))
+        let session = try #require(try await store.createSession(seedIds: [Fixture.seedId], picks: ids.map { .init(sentenceId: $0, mode: .shadow) }))
 
         let first = try #require(try await store.nextItem(inSession: session))
         let done = try await store.record(.init(outcome: .pass, heard: "Das Auto ist rot", engine: "test", mismatched: []), for: first)
@@ -313,7 +351,7 @@ struct PracticeStoreTests {
         let database = try await seededDatabase()
         let store = PracticeStore(database: database)
         let id = try await sentenceId("a1.dbg_rot.1", in: database)
-        let session = try #require(try await store.createSession(level: .a1, picks: [.init(sentenceId: id, mode: .cloze)]))
+        let session = try #require(try await store.createSession(seedIds: [Fixture.seedId], picks: [.init(sentenceId: id, mode: .cloze)]))
         let item = try #require(try await store.nextItem(inSession: session))
         try await store.record(.init(outcome: .pass, mismatched: []), for: item)
         let before = try await database.writer.read { db in try Progress.fetchAll(db) }
@@ -329,7 +367,7 @@ struct PracticeStoreTests {
         let id = try await sentenceId("a1.dbg_rot.1", in: database)
         for round in 1...12 {
             clock.seconds = Double(round)
-            let session = try #require(try await store.createSession(level: .a1, picks: [.init(sentenceId: id, mode: .shadow)]))
+            let session = try #require(try await store.createSession(seedIds: [Fixture.seedId], picks: [.init(sentenceId: id, mode: .shadow)]))
             let item = try #require(try await store.nextItem(inSession: session))
             try await store.record(.init(outcome: .pass, mismatched: []), for: item)
         }
@@ -361,9 +399,9 @@ final class SilentSpeaker: SentenceSpeaker {
 
 @MainActor
 struct PracticeEngineTests {
-    private func makeEngine(_ database: AppDatabase, level: CEFRLevel = .a1, seed: UInt64 = 1) -> PracticeEngine {
+    private func makeEngine(_ database: AppDatabase, seedIds: [String] = [Fixture.seedId], seed: UInt64 = 1) -> PracticeEngine {
         PracticeEngine(database: database, recognizer: SilentRecognizer(), speaker: SilentSpeaker(),
-                       userLevel: level, random: SplitMix64(seed: seed))
+                       seedIds: seedIds, random: SplitMix64(seed: seed))
     }
 
     /// Answers the current item; `correct` speaks the sentence, otherwise a wrong word.
@@ -393,7 +431,8 @@ struct PracticeEngineTests {
         engine.onSessionFinished = { finished += 1 }
         await engine.start(prepareSpeech: false)
         #expect(engine.status == .practicing)
-        #expect(engine.progress.total == 10)  // 11 practicable sentences, one is regional
+        #expect(engine.progress.total == 10)  // 12 sentences, the regional one included
+        #expect(engine.library?.seedId == Fixture.seedId && engine.library?.total == 12)
 
         var modes: Set<SentenceMode> = []
         var clozeBlanks: [Int] = []
@@ -447,16 +486,16 @@ struct PracticeEngineTests {
         #expect(second.progress.answered == 1)
     }
 
-    @Test func emptyLevelShowsNoContentUntilContentArrives() async throws {
+    @Test func emptySelectionShowsNoContentUntilContentArrives() async throws {
         let database = try AppDatabase.inMemory()
         let engine = makeEngine(database)
         await engine.start(prepareSpeech: false)
         #expect(engine.status == .noContent)
 
         try await SeedImporter.importSeed(try Fixture.seed(), origin: .user, into: database)
-        await engine.changeLevel(to: .a2)
+        await engine.changeSelection(to: ["missing"])
         #expect(engine.status == .noContent)
-        await engine.changeLevel(to: .a1)
+        await engine.changeSelection(to: [Fixture.seedId])
         #expect(engine.status == .practicing)
     }
 
@@ -469,13 +508,34 @@ struct PracticeEngineTests {
         #expect(engine.status == .practicing)
     }
 
-    @Test func levelChangeFinishesTheActiveSessionFirst() async throws {
+    @Test func selectionChangeEndsTheActiveSessionAndStartsFromTheNewLibraries() async throws {
         let database = try await seededDatabase()
+        try await SeedImporter.importSeed(try Fixture.otherSeed(), origin: .user, into: database)
         let engine = makeEngine(database)
+        var finished = 0
+        engine.onSessionFinished = { finished += 1 }
         await engine.start(prepareSpeech: false)
-        let item = engine.item
-        await engine.changeLevel(to: .b1)
-        #expect(engine.status == .practicing && engine.item == item)
+        try await answer(engine)
+        await engine.next()
+
+        await engine.changeSelection(to: [Fixture.otherSeedId])
+        #expect(engine.status == .practicing && finished == 1)
+        #expect(engine.item?.position == 1 && engine.item?.sentence.seedId == Fixture.otherSeedId)
+        #expect(engine.library?.seedId == Fixture.otherSeedId)
+        let history = try await HistoryStore(database: database).load()
+        #expect(history.count == 1 && history[0].items.count == 1)
+        #expect(history[0].libraries == ["Debug A1"])
+    }
+
+    @Test func severalLibrariesArePracticedTogether() async throws {
+        let database = try await seededDatabase()
+        try await SeedImporter.importSeed(try Fixture.otherSeed(), origin: .user, into: database)
+        let candidates = try await PracticeStore(database: database).candidates(seedIds: [Fixture.seedId, Fixture.otherSeedId])
+        #expect(candidates.count == 24)
+        let engine = makeEngine(database, seedIds: [Fixture.seedId, Fixture.otherSeedId])
+        await engine.start(prepareSpeech: false)
+        let session = try await database.writer.read { db in try Session.fetchOne(db, sql: "SELECT * FROM session WHERE status = 'active'") }
+        #expect(session?.seedIds == [Fixture.seedId, Fixture.otherSeedId])
     }
 
     @Test func dataResetRestartsPractice() async throws {
@@ -488,5 +548,34 @@ struct PracticeEngineTests {
         await engine.dataWasReset()
         #expect(engine.status == .practicing)
         #expect(engine.progress.answered == 0)
+    }
+}
+
+// MARK: - Checked libraries (DESIGN.md §3.2)
+
+struct PracticeSelectionTests {
+    private func seed(_ id: String, _ level: CEFRLevel, _ origin: SeedOrigin = .bundled) -> SeedImport {
+        SeedImport(seedId: id, title: id, level: level, version: 1, origin: origin, entryCount: 0, sentenceCount: 0, importedAt: 0)
+    }
+
+    private var seeds: [SeedImport] {
+        [seed("goethe_b1", .b1), seed("goethe_a2", .a2), seed("debug_a1", .a1, .user), seed("goethe_a1", .a1)]
+    }
+
+    @Test func keepsTheStoredIdsThatStillExistInDisplayOrder() {
+        #expect(PracticeSelection.resolve(stored: ["goethe_b1", "gone", "goethe_a1"], legacyLevel: "A2", seeds: seeds)
+                == ["goethe_a1", "goethe_b1"])
+    }
+
+    @Test func checksTheBundledLibrariesOfTheFormerLevel() {
+        #expect(PracticeSelection.resolve(stored: nil, legacyLevel: "A2", seeds: seeds) == ["goethe_a2"])
+        #expect(PracticeSelection.resolve(stored: ["gone"], legacyLevel: "A1", seeds: seeds) == ["goethe_a1"])
+    }
+
+    @Test func fallsBackToTheBundledLibraryOfTheLowestLevel() {
+        #expect(PracticeSelection.resolve(stored: nil, legacyLevel: nil, seeds: seeds) == ["goethe_a1"])
+        #expect(PracticeSelection.resolve(stored: nil, legacyLevel: "B2", seeds: seeds) == ["goethe_a1"])
+        #expect(PracticeSelection.resolve(stored: nil, legacyLevel: nil, seeds: [seed("debug_a1", .a1, .user)]) == ["debug_a1"])
+        #expect(PracticeSelection.resolve(stored: ["goethe_a1"], legacyLevel: nil, seeds: []).isEmpty)
     }
 }

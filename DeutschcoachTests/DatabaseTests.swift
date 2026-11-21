@@ -12,7 +12,7 @@ struct MigrationTests {
         let expected: Set = [
             "seed_import", "entry", "sentence", "sentence_entry",
             "progress", "practice_event", "session", "session_item",
-            "idx_entry", "idx_sentence",
+            "idx_entry", "idx_sentence", "idx_sentence_seed",
         ]
         #expect(names == expected)
     }
@@ -30,7 +30,7 @@ struct MigrationTests {
         _ = try AppDatabase(queue)
         _ = try AppDatabase(queue)
         let applied = try queue.read { db in try AppDatabase.migrator.appliedMigrations(db) }
-        #expect(applied == ["v1", "v2", "v3", "v4"])
+        #expect(applied == ["v1", "v2", "v3", "v4", "v5"])
     }
 
     @Test func v3DropsTheVersion01TablesAndTheirData() throws {
@@ -77,6 +77,40 @@ struct MigrationTests {
             #expect(try db.columns(in: "progress").map(\.name) == ["sentence_id", "level", "last_seen_at"])
         }
     }
+
+    @Test func v5RecordsSessionsByLibraryAndDropsTheBlankEntry() throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.migrator.migrate(queue, upTo: "v4")
+        try queue.write { db in
+            for (id, level, origin) in [("goethe_a1", "A1", "bundled"), ("debug_a1", "A1", "user"), ("goethe_a2", "A2", "bundled")] {
+                try db.execute(sql: """
+                    INSERT INTO seed_import (seed_id, title, level, version, origin, entry_count, sentence_count, imported_at)
+                    VALUES (?, ?, ?, 1, ?, 0, 0, 0)
+                    """, arguments: [id, id, level, origin])
+            }
+            try db.execute(sql: """
+                INSERT INTO sentence (id, key, seed_id, level, source, de, translations, annotation, sort)
+                VALUES (1, 'a1.x.1', 'goethe_a1', 'A1', 'goethe', 'Hallo.', '{}', '{}', 1)
+                """)
+            try db.execute(sql: "INSERT INTO entry (id, key, seed_id, level, headword, lemma, pos, sort) VALUES (1, 'a1.x', 'goethe_a1', 'A1', 'x', 'x', 'NOUN', 1)")
+            try db.execute(sql: "INSERT INTO session (id, level, status, created_at, finished_at) VALUES (1, 'A1', 'done', 1, 2), (2, 'B1', 'active', 3, NULL)")
+            try db.execute(sql: """
+                INSERT INTO session_item (session_id, position, sentence_id, mode, blank_entry_id, status)
+                VALUES (1, 1, 1, 'cloze', 1, 'done'), (2, 1, 1, 'shadow', NULL, 'pending')
+                """)
+        }
+        _ = try AppDatabase(queue)
+        try queue.read { db throws in
+            let sessions = try Session.order(Column("id")).fetchAll(db)
+            #expect(sessions.map(\.seedIds) == [["debug_a1", "goethe_a1"], []])
+            #expect(sessions.map(\.status) == [.done, .active] && sessions[0].finishedAt == 2)
+            #expect(try SessionItem.order(Column("session_id")).fetchAll(db).map(\.mode) == [.cloze, .shadow])
+            #expect(try db.columns(in: "session_item").map(\.name) == ["session_id", "position", "sentence_id", "mode", "status"])
+            #expect(try db.indexes(on: "sentence").map(\.name).contains("idx_sentence_seed"))
+            // Items still cascade with their session.
+            #expect(try db.foreignKeys(on: "session_item").contains { $0.destinationTable == "session" })
+        }
+    }
 }
 
 // MARK: - Fixture
@@ -89,6 +123,29 @@ enum Fixture {
 
     static func seed() throws -> SeedFile {
         try SeedImporter.decode(data())
+    }
+
+    static let seedId = "debug_a1"
+    static let otherSeedId = "debug_a2"
+
+    /// A second library: the fixture as an A2 seed with its own id and keys.
+    static func otherSeed() throws -> SeedFile {
+        var file = try seed()
+        file.seed.id = otherSeedId
+        file.seed.title = "Debug A2"
+        file.seed.level = .a2
+        func rekey(_ key: String) -> String { "a2." + key.dropFirst(3) }
+        for index in file.entries.indices {
+            file.entries[index].key = rekey(file.entries[index].key)
+            file.entries[index].parent = file.entries[index].parent.map(rekey)
+        }
+        for index in file.sentences.indices {
+            file.sentences[index].key = rekey(file.sentences[index].key)
+            for link in file.sentences[index].entries.indices {
+                file.sentences[index].entries[link].key = rekey(file.sentences[index].entries[link].key)
+            }
+        }
+        return file
     }
 
     /// The fixture seed with a new version, as a file in the temporary directory.
@@ -405,7 +462,7 @@ struct ClearDataTests {
         try await SeedImporter.importSeed(try Fixture.seed(), origin: .bundled, into: database)
         try await database.writer.write { db in
             let sentenceId = try #require(try Int64.fetchOne(db, sql: "SELECT id FROM sentence LIMIT 1"))
-            var session = Session(level: .a1, status: .active, createdAt: 1)
+            var session = Session(seedIds: [Fixture.seedId], status: .active, createdAt: 1)
             try session.insert(db)
             try SessionItem(sessionId: session.id!, position: 1, sentenceId: sentenceId, mode: .shadow, status: .done).insert(db)
             try Progress(sentenceId: sentenceId, level: 2, lastSeenAt: 1).insert(db)
@@ -421,7 +478,7 @@ struct ClearDataTests {
         try await database.clearPracticeRecords()
         let stats = try await database.libraryStats()
         #expect(stats.practiceEvents == 0 && stats.sessions == 0)
-        #expect(stats.sentences[.a1] == 12 && stats.entries[.a1] == 14)
+        #expect(stats.progress[Fixture.seedId]?.total == 12 && stats.seeds.first?.entryCount == 14)
         #expect(stats.seeds.map(\.seedId) == ["debug_a1"])
     }
 
@@ -435,6 +492,6 @@ struct ClearDataTests {
         defer { try? FileManager.default.removeItem(at: v1) }
         let outcome = await BundledSeeds.importIfNeeded([v1], into: database)
         #expect(outcome.imported.count == 1)
-        #expect(try await database.libraryStats().sentences[.a1] == 12)
+        #expect(try await database.libraryStats().progress[Fixture.seedId]?.total == 12)
     }
 }

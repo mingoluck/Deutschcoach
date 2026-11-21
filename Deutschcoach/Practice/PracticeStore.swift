@@ -13,9 +13,26 @@ nonisolated struct PracticeItem: Sendable, Equatable {
     var annotation: SentenceAnnotation
     /// Cloze blanks (token indices); empty for other modes.
     var blanks: [Int]
+    /// Austrian or Swiss entries of the sentence, shown as a tag (§3.3).
+    var regional: [RegionalEntry] = []
 
     func translation(for language: String) -> String {
         sentence.translation(for: language) ?? ""
+    }
+}
+
+/// An Austrian or Swiss entry linked to a sentence (DESIGN.md §3.3).
+nonisolated struct RegionalEntry: Sendable, Equatable, Hashable {
+    var region: Region
+    /// As in the list, with its cross-reference, e.g. `das Stiegenhaus, ¨-er (A) → D, CH: Treppenhaus`.
+    var headword: String
+
+    static func load(sentenceId: Int64, db: Database) throws -> [RegionalEntry] {
+        try Row.fetchAll(db, sql: """
+            SELECT e.region, e.headword FROM sentence_entry se JOIN entry e ON e.id = se.entry_id
+            WHERE se.sentence_id = ? AND e.region IS NOT NULL ORDER BY e.sort
+            """, arguments: [sentenceId])
+            .compactMap { row in Region(rawValue: row["region"]).map { RegionalEntry(region: $0, headword: row["headword"]) } }
     }
 }
 
@@ -46,28 +63,28 @@ nonisolated struct PracticeStore: Sendable {
         }
     }
 
-    /// The sentences of `level` that a session can be built from (§3.2).
-    func candidates(level: CEFRLevel) async throws -> [SessionBuilder.Candidate] {
+    /// The sentences of the libraries `seedIds` that a session can be built from (§3.2).
+    func candidates(seedIds: [String]) async throws -> [SessionBuilder.Candidate] {
         try await database.writer.read { db in
-            try SessionBuilder.loadCandidates(level: level, from: db)
+            try SessionBuilder.loadCandidates(seedIds: seedIds, from: db)
         }
     }
 
     /// Stores a new `active` session with `picks`; nil when there are none.
-    func createSession(level: CEFRLevel, picks: [SessionBuilder.Pick]) async throws -> Int64? {
+    func createSession(seedIds: [String], picks: [SessionBuilder.Pick]) async throws -> Int64? {
         guard !picks.isEmpty else { return nil }
         let createdAt = timestamp
         let id = try await database.writer.write { db in
-            var session = Session(level: level, status: .active, createdAt: createdAt)
+            var session = Session(seedIds: seedIds, status: .active, createdAt: createdAt)
             try session.insert(db)
             let id = session.id!
             for (offset, pick) in picks.enumerated() {
                 try SessionItem(sessionId: id, position: offset + 1, sentenceId: pick.sentenceId, mode: pick.mode,
-                                blankEntryId: pick.blankEntryId, status: .pending).insert(db)
+                                status: .pending).insert(db)
             }
             return id
         }
-        logger.info("Session #\(id) at \(level.rawValue, privacy: .public): \(picks.map(\.mode.rawValue), privacy: .public)")
+        logger.info("Session #\(id) from \(seedIds, privacy: .public): \(picks.map(\.mode.rawValue), privacy: .public)")
         return id
     }
 
@@ -87,13 +104,37 @@ nonisolated struct PracticeStore: Sendable {
         guard let sentence = try Sentence.fetchOne(db, key: item.sentenceId) else {
             throw DatabaseError(message: "sentence \(item.sentenceId) is missing")
         }
-        var blanks: [Int] = []
-        if item.mode == .cloze, let entryId = item.blankEntryId,
-           let link = try SentenceEntry.filter(Column("sentence_id") == item.sentenceId && Column("entry_id") == entryId).fetchOne(db) {
-            blanks = link.decodedTokens
-        }
+        let blanks = item.mode == .cloze ? try clozeBlanks(sentenceId: item.sentenceId, db: db) : []
         return PracticeItem(sessionId: item.sessionId, position: item.position, mode: item.mode, sentence: sentence,
-                            annotation: try sentence.decodedAnnotation(), blanks: blanks)
+                            annotation: try sentence.decodedAnnotation(), blanks: blanks,
+                            regional: try RegionalEntry.load(sentenceId: item.sentenceId, db: db))
+    }
+
+    /// §3.2: the tokens of every entry linked to the sentence, in order.
+    static func clozeBlanks(sentenceId: Int64, db: Database) throws -> [Int] {
+        let links = try SentenceEntry.filter(Column("sentence_id") == sentenceId).fetchAll(db)
+        return Set(links.flatMap(\.decodedTokens)).sorted()
+    }
+
+    /// §3.1: ends the `active` session early because the checked libraries changed. Answered
+    /// items stay for the history; pending ones are deleted, and so is a session without answers.
+    func endActiveSession() async throws {
+        let ts = timestamp
+        try await database.writer.write { db in
+            guard let id = try Int64.fetchOne(db, sql: "SELECT id FROM session WHERE status = 'active'") else { return }
+            try db.execute(sql: "DELETE FROM session_item WHERE session_id = ? AND status = 'pending'", arguments: [id])
+            if try SessionItem.filter(Column("session_id") == id).fetchCount(db) == 0 {
+                try db.execute(sql: "DELETE FROM session WHERE id = ?", arguments: [id])
+            } else {
+                try db.execute(sql: "UPDATE session SET status = 'done', finished_at = ? WHERE id = ?", arguments: [ts, id])
+                try Self.pruneHistory(db)
+            }
+        }
+    }
+
+    /// The progress of one library (§6).
+    func libraryProgress(seedId: String) async throws -> LibraryProgress? {
+        try await database.writer.read { db in try LibraryProgress.fetch(seedId: seedId, db)[seedId] }
     }
 
     /// Answered and total items of a session.

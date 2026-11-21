@@ -4,16 +4,66 @@ import os
 
 private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "database")
 
+/// The active sentences of one library by stage of the mastery ladder (DESIGN.md §3.5, §6).
+nonisolated struct LibraryProgress: Sendable, Equatable {
+    var seedId: String
+    var title: String
+    var level: CEFRLevel
+    /// No `progress` row yet.
+    var new = 0
+    /// Levels 1–2.
+    var shadow = 0
+    /// Levels 3–4.
+    var cloze = 0
+    /// Levels 5–6.
+    var recall = 0
+    /// Level 7.
+    var mastered = 0
+
+    var total: Int { new + shadow + cloze + recall + mastered }
+    var practiced: Int { total - new }
+
+    mutating func add(_ count: Int, atLevel level: Int?) {
+        guard let level else { new += count; return }
+        if level >= MasteryRules.masteredLevel { mastered += count; return }
+        switch MasteryRules.mode(level: level) {
+        case .shadow: shadow += count
+        case .cloze: cloze += count
+        case .recall: recall += count
+        }
+    }
+
+    /// The progress of every imported library, or only of `seedId`, keyed by seed id.
+    static func fetch(seedId: String? = nil, _ db: Database) throws -> [String: LibraryProgress] {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT i.seed_id, i.title, i.level, p.level AS ladder, COUNT(s.id) AS n
+            FROM seed_import i
+            LEFT JOIN sentence s ON s.seed_id = i.seed_id AND s.status = 'active'
+            LEFT JOIN progress p ON p.sentence_id = s.id
+            WHERE ?1 IS NULL OR i.seed_id = ?1
+            GROUP BY i.seed_id, p.level
+            """, arguments: [seedId])
+        var result: [String: LibraryProgress] = [:]
+        for row in rows {
+            let id: String = row["seed_id"]
+            guard let level = CEFRLevel(rawValue: row["level"]) else { continue }
+            result[id, default: LibraryProgress(seedId: id, title: row["title"], level: level)]
+                .add(row["n"], atLevel: row["ladder"])
+        }
+        return result
+    }
+}
+
 /// What the Library settings page shows (DESIGN.md §6).
 nonisolated struct LibraryStats: Sendable, Equatable {
-    /// Active entries and sentences by level.
-    var entries: [CEFRLevel: Int] = [:]
-    var sentences: [CEFRLevel: Int] = [:]
+    /// Imported libraries in display order (by level, then id).
+    var seeds: [SeedImport] = []
+    /// Progress by seed id.
+    var progress: [String: LibraryProgress] = [:]
     var practiceEvents = 0
     var sessions = 0
-    var seeds: [SeedImport] = []
 
-    var totalSentences: Int { sentences.values.reduce(0, +) }
+    var totalSentences: Int { progress.values.reduce(0) { $0 + $1.total } }
 }
 
 /// Clearing data (DESIGN.md §2.6).
@@ -24,19 +74,10 @@ nonisolated extension AppDatabase {
     func libraryStats() async throws -> LibraryStats {
         try await writer.read { db in
             var stats = LibraryStats()
-            func counts(_ table: String) throws -> [CEFRLevel: Int] {
-                var result: [CEFRLevel: Int] = [:]
-                for row in try Row.fetchAll(db, sql: "SELECT level, COUNT(*) AS n FROM \(table) WHERE status = 'active' GROUP BY level") {
-                    guard let level = CEFRLevel(rawValue: row["level"]) else { continue }
-                    result[level] = row["n"]
-                }
-                return result
-            }
-            stats.entries = try counts("entry")
-            stats.sentences = try counts("sentence")
+            stats.seeds = PracticeSelection.sorted(try SeedImport.fetchAll(db))
+            stats.progress = try LibraryProgress.fetch(db)
             stats.practiceEvents = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM practice_event") ?? 0
             stats.sessions = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM session") ?? 0
-            stats.seeds = try SeedImport.order(Column("seed_id")).fetchAll(db)
             return stats
         }
     }

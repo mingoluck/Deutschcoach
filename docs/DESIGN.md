@@ -13,7 +13,7 @@ This document collects all design decisions settled in the discussions of Novemb
 A macOS app that coaches you in speaking German:
 
 1. The app ships with a database of German **example sentences**, taken from the Goethe-Institut word lists A1, A2 and B1. Each sentence belongs to one level and to one or more **entries** (headwords of the list), and comes with a native-language translation and a grammatical annotation, all prepared offline (§4).
-2. The user picks a level; practice draws only from that level's sentences. The local engine picks **a session of 10** sentences based on the user's per-sentence mastery.
+2. Content is organized in **libraries**: one library per imported seed file (§2.5). The user checks one or more libraries in Settings; practice draws from the sentences of the checked libraries. The local engine picks **a session of 10** sentences based on the user's per-sentence mastery.
 3. The UI shows only: the German sentence, the grammatical annotation (colors, line styles, small text), and the native-language translation. It never shows explanations or definitions.
 4. Three practice modes: shadowing, cloze, and translation. The user speaks; the system recognizes the answer, compares it with the sentence, and moves the sentence one step up or down a single mastery ladder whose position decides the mode (§3.5).
 5. Everything works offline. No LLM is used in this version.
@@ -47,7 +47,7 @@ A macOS app that coaches you in speaking German:
 
 ### 2.2 Schema
 
-The 0.2 schema replaces the 0.1 tables in a new migration: the 0.1 content tables (`element`, `vocab_detail`, `grammar_detail`, `pattern_detail`, `element_link`, `word_form`) and user tables (`mastery`, `practice_event`, `batch`, `sentence`, `sentence_element`) are dropped, and the old development data is discarded. A later migration (M13) replaced the two mastery dimensions with one ladder: `progress` has one row per sentence, `practice_event` lost its `dimension` column, and progress was recomputed from the events. The SQL below is the current schema.
+The 0.2 schema replaces the 0.1 tables in a new migration: the 0.1 content tables (`element`, `vocab_detail`, `grammar_detail`, `pattern_detail`, `element_link`, `word_form`) and user tables (`mastery`, `practice_event`, `batch`, `sentence`, `sentence_element`) are dropped, and the old development data is discarded. A later migration (M13) replaced the two mastery dimensions with one ladder: `progress` has one row per sentence, `practice_event` lost its `dimension` column, and progress was recomputed from the events. Another (M14) made practice draw from libraries instead of a user level: `session.level` became `session.seed_ids`, `session_item.blank_entry_id` was dropped (cloze blanks follow from `sentence_entry`), and `sentence` got an index on `seed_id`. The SQL below is the current schema.
 
 ```sql
 -- ===== Content layer =====
@@ -95,6 +95,7 @@ CREATE TABLE sentence (
   status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','retired'))
 );
 CREATE INDEX idx_sentence ON sentence(level, status);
+CREATE INDEX idx_sentence_seed ON sentence(seed_id, status);
 
 -- which entries a sentence illustrates, and where they are in it
 CREATE TABLE sentence_entry (
@@ -125,7 +126,7 @@ CREATE TABLE practice_event (
 
 CREATE TABLE session (
   id          INTEGER PRIMARY KEY,
-  level       TEXT NOT NULL,
+  seed_ids    JSON NOT NULL,           -- the libraries it was picked from, e.g. ["goethe_a1","goethe_a2"]
   status      TEXT NOT NULL CHECK (status IN ('active','done')),
   created_at  INTEGER NOT NULL,
   finished_at INTEGER
@@ -136,7 +137,6 @@ CREATE TABLE session_item (
   position       INTEGER NOT NULL,     -- 1–10
   sentence_id    INTEGER NOT NULL REFERENCES sentence(id),
   mode           TEXT NOT NULL CHECK (mode IN ('shadow','cloze','recall')),
-  blank_entry_id INTEGER REFERENCES entry(id),  -- cloze: the entry whose tokens are blanked
   status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','skipped')),
   PRIMARY KEY (session_id, position)
 );
@@ -146,7 +146,7 @@ Notes:
 
 - GRDB enables foreign key constraints by default.
 - The mode code `recall` is kept from 0.1; its UI name is “翻译” (Translation).
-- `level` allows `B2` for future seeds; the bundled seeds cover A1–B1.
+- A **library** is a row of `seed_import`, identified by `seed_id`. The seed id (e.g. `goethe_a1`) and the key prefixes (`a1.`) are identifiers only. `level` is an attribute shown with the library; it plays no part in selection. It allows `B2` for future seeds; the bundled seeds cover A1–B1.
 - `source`: `goethe` = example sentence from the word list; `generated` = written offline for a Wortgruppen item (§4.4); `llm` = reserved for sentences generated at run time in a later version.
 
 ### 2.3 History Pruning
@@ -263,13 +263,13 @@ Two actions in Settings › “词库” (Library):
 - State transitions: `active → done`. At most one `active` session.
 - On launch: if there is an `active` session, resume from its first `pending` item; otherwise build a new one.
 - When a session is done, the next one is built on the spot.
-- On changing the user level: the `active` session is finished as is; the next session uses the new level.
+- On changing the checked libraries: the `active` session ends at once. Its answered items stay in the history; its pending items are deleted, and if none was answered the session is deleted. A new session is then built from the new selection.
 - On changing the native language: only the displayed translation changes, including in the `active` session and in history.
 - History is read-only and cannot be practiced again.
 
 ### 3.2 Sentence Selection and Mode Assignment
 
-- **Candidates**: sentences with `status = 'active'` and `level` = the user level, except those whose linked entries are all regional (`region` not null). Regional sentences stay in the database but are not practiced in 0.2 (§8).
+- **Candidates**: sentences with `status = 'active'` whose `seed_id` is one of the checked libraries, regional ones included (§3.3).
 - **Weight** = `base(level) × (1 + min(days since last practice, 14) / 7) × jitter(0.8–1.2)`. Never-practiced sentences count as level 2 and 14 days. The base weight (initial values, adjustable) is highest on the first step of each mode and lowest once mastered:
 
 | Level | Base weight |
@@ -280,8 +280,8 @@ Two actions in Settings › “词库” (Library):
 
 - **New sentence window**: a sentence is *new* when it has no `progress` row. A session contains at most 5 new sentences, picked at random among the new ones; the rest are review. The window size is an initial value in code, adjustable.
 - **Variety**: within a session, at most one sentence per entry, and no sentence twice.
-- **Running out of candidates** (small levels): first widen the new window, then allow several sentences of one entry. A sentence never appears twice in a session; when the level has fewer than 10 practicable sentences, the session is shorter.
-- **User level**: chosen in Settings (A1, A2, B1; default A1; stored in UserDefaults). Practice uses only that level's sentences; mixing levels is left for later (§8).
+- **Running out of candidates** (small libraries): first widen the new window, then allow several sentences of one entry. A sentence never appears twice in a session; when the checked libraries have fewer than 10 sentences, the session is shorter.
+- **Checked libraries**: chosen in Settings › Library and stored in UserDefaults as a list of seed ids (`practiceSeeds`). At least one stays checked. Ids that are no longer in `seed_import` are ignored; when none is left, the bundled library of the lowest level is checked. The first launch after this change checks the bundled libraries of the former user level (`userLevel`, then removed).
 - **Mode** by the sentence's level (§3.5):
 
 | Level | Mode |
@@ -290,7 +290,7 @@ Two actions in Settings › “词库” (Library):
 | 3–4 | Cloze `cloze` |
 | 5–7 | Translation `recall` |
 
-- **Cloze blanks**: one linked entry is chosen at random (non-regional first) and stored in `session_item.blank_entry_id`; all of its tokens are blanked (both parts of a separable verb).
+- **Cloze blanks**: the tokens of every entry linked to the sentence in `sentence_entry` are blanked (both parts of a separable verb). Most sentences have one entry; a sentence listed under several headwords has all of them blanked, which may blank every word (`Guten Appetit!`); the blanks still show case colors and constituent lines.
 
 ### 3.3 The Three Modes
 
@@ -300,6 +300,7 @@ Two actions in Settings › “词库” (Library):
 | Cloze “填空” | Sentence with blanks + full translation, not read aloud. Blanks keep their case color and constituent lines; the other words' annotations are shown as usual before answering | Says the full sentence |
 | Translation “翻译” | Translation only | Says the full sentence |
 
+- **Regional sentences**: a sentence linked to an Austrian or Swiss entry shows a tag above it in every mode (“奥地利用法” Austrian usage / “瑞士用法” Swiss usage), since its translation may equal that of a common German sentence. After answering, the tag also shows the entry's headword with the list's cross-reference (`das Stiegenhaus, ¨-er (A) → D, CH: Treppenhaus`). The history shows both.
 - Recording ends when the user taps a button.
 - After answering, the correct full sentence (with annotation) is shown and read aloud; on a failure, the compared reading is shown below it with the mismatched words marked.
 
@@ -497,13 +498,13 @@ Interactive visual reference: the label set review page (an artifact made by Cla
 
 ## 6. UI
 
-- **Practice screen**: shows only the German sentence, annotation, and translation (translation mode shows only the translation); a record button; a skip button; while recording, the in-progress (volatile) transcription is shown live as feedback, and only the final transcription is scored; after answering, the correct answer is shown and read aloud, with mismatched words marked.
+- **Practice screen**: a header with the library of the current sentence (title and level), its progress bar and “已掌握 X / N” (Mastered X of N), with the counts of every stage in a tooltip (not clickable); below it the mode and the position in the session. The progress of a library counts its active sentences by ladder stage (§3.5): new (no `progress` row), shadowing (1–2), cloze (3–4), translation (5–6), mastered (7). The rest shows only the German sentence, annotation, and translation (translation mode shows only the translation); a record button; a skip button; while recording, the in-progress (volatile) transcription is shown live as feedback, and only the final transcription is scored; after answering, the correct answer is shown and read aloud, with mismatched words marked.
 - **While the bundled seeds are imported** (first launch or after an app update), the practice screen shows a short progress state.
-- **History screen**: the 10 most recent sessions, read-only. Each sentence shows its annotation, translation, mode and result (passed, mismatched words, skipped), from `practice_event`.
+- **History screen**: the 10 most recent sessions, read-only, each with the titles of its libraries. Each sentence shows its regional tag (§3.3), its annotation, translation, mode and result (passed, mismatched words, skipped), from `practice_event`.
 - **Settings screen**: the standard macOS Settings window (⌘,) with two tabs:
-  - “通用” (General): native language (中文 / English), user level (A1, A2, B1), and voice selection (installed German voices, stored in UserDefaults, with a preview). There is no API key field in 0.2.
-  - “词库” (Library): counts of entries and sentences per level; the imported seeds from `seed_import` (title, id, version, counts, import time); “清空练习记录” (Clear Practice Records) and “重置数据库” (Reset Database) (§2.6).
-- **When the user's level has no sentence**, the practice screen says so (“%@ 级别还没有句子。”) and points to Settings.
+  - “通用” (General): native language (中文 / English) and voice selection (installed German voices, stored in UserDefaults, with a preview). There is no API key field in 0.2.
+  - “词库” (Library): every library from `seed_import` with a checkbox (the libraries practiced), its title and level, its progress bar and “已掌握 X / N”, and its id, version, counts and import time; “清空练习记录” (Clear Practice Records) and “重置数据库” (Reset Database) (§2.6).
+- **When the checked libraries have no sentence**, the practice screen says so (“所选词库还没有句子。”) and points to Settings › Library.
 - The main window has two tabs: practice and history. Of the milestone lab screens, only speech and database remain, in Debug builds only. The database lab has a “Load debug seed” button: a 12-sentence A1 seed compiled into Debug builds only (`DebugSeed`, keys `a1.dbg_*` so they never clash with the Goethe seeds), which is also the unit-test fixture.
 
 ---
@@ -520,6 +521,7 @@ Milestones M1–M7 built version 0.1 (project setup, speech loop, annotation ren
 | M11 | **A2 seed**, as M10 | As M10 |
 | M12 | **B1 seed**, as M10 (in several batches) | As M10 |
 | M13 | **Mastery ladder.** Replace the two mastery dimensions with one level 1–7 per sentence (§3.5), mode by level and new base weights (§3.2); migration: `progress` with one row per sentence, `practice_event.dimension` dropped, progress recomputed from the events | Unit tests pass; an existing database migrates with its history intact and practice continues |
+| M14 | **Practice by library.** Checked libraries instead of a user level (§3.1, §3.2); regional sentences practiced with a tag (§3.3); cloze blanks every linked entry; migration: `session.seed_ids`, `session_item.blank_entry_id` dropped, index on `sentence.seed_id`; library progress on the practice screen and in Settings › Library (§6) | Unit tests pass; an existing database migrates with its history; practice with several checked libraries; changing the selection starts a new session |
 
 Make one git commit after each milestone is completed; the seed milestones may commit once per batch.
 
@@ -528,8 +530,6 @@ Make one git commit after each milestone is completed; the seed milestones may c
 ## 8. Undecided / Later
 
 - **LLM features**: flexible exercises that vary grammar, sentence patterns and vocabulary; lenient judging of paraphrases; more native languages; generated sentences stored with `source = 'llm'`. The API key would then be optional and only these features would need it.
-- Mixing levels in one session (e.g. reviewing lower levels at B1).
-- Practicing regional (A/CH) variants: a setting to include them.
 - Manual import of user-selected seed files, e.g. topic packs; unloading a seed.
 - B2 content: there is no Goethe B2 word list.
 - Restoring a backup from the UI.

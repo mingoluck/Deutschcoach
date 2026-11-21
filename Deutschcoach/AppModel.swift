@@ -27,7 +27,8 @@ final class AppModel {
     private(set) var practice: PracticeEngine?
     private(set) var history: HistoryModel?
     private(set) var nativeLanguage = NativeLanguage.current
-    private(set) var userLevel = UserLevel.current
+    /// The checked libraries (seed ids), kept valid against `library.seeds` (DESIGN.md §3.2).
+    private(set) var practiceSeeds: [String] = PracticeSelection.stored ?? []
 
     let speaker = Speaker()
 
@@ -57,7 +58,7 @@ final class AppModel {
         guard practice == nil, !Self.isRunningTests else { return }
         let history = HistoryModel(database: database)
         self.history = history
-        let engine = PracticeEngine(database: database, speaker: speaker, userLevel: userLevel)
+        let engine = PracticeEngine(database: database, speaker: speaker, seedIds: practiceSeeds)
         engine.onSessionFinished = { Task { await history.reload() } }
         practice = engine
         // Unstructured: not cancelled together with the caller's task.
@@ -83,12 +84,31 @@ final class AppModel {
         nativeLanguage = language
     }
 
-    /// §3.1: the next session uses the new level.
-    func setUserLevel(_ level: CEFRLevel) async {
-        guard level != userLevel else { return }
-        UserLevel.current = level
-        userLevel = level
-        await practice?.changeLevel(to: level)
+    /// Settings › Library: checks or unchecks a library; the last checked one stays checked.
+    /// §3.1: the active session ends and a new one starts from the new selection.
+    func setPracticed(_ seedId: String, _ isOn: Bool) async {
+        var selected = Set(practiceSeeds)
+        if isOn { selected.insert(seedId) } else { selected.remove(seedId) }
+        guard !selected.isEmpty else { return }
+        let ordered = PracticeSelection.sorted(library.seeds).map(\.seedId).filter(selected.contains)
+        await applySelection(ordered)
+    }
+
+    /// Keeps the selection valid after the libraries changed (launch, import, reset).
+    private func resolveSelection() async {
+        let resolved = PracticeSelection.resolve(stored: practiceSeeds.isEmpty ? PracticeSelection.stored : practiceSeeds,
+                                                 legacyLevel: PracticeSelection.legacyLevel, seeds: library.seeds)
+        // Nothing imported (e.g. midway through a reset): keep the selection as it is.
+        guard !resolved.isEmpty else { return }
+        PracticeSelection.legacyLevel = nil
+        await applySelection(resolved)
+    }
+
+    private func applySelection(_ seedIds: [String]) async {
+        guard seedIds != practiceSeeds || PracticeSelection.stored != seedIds else { return }
+        practiceSeeds = seedIds
+        PracticeSelection.stored = seedIds
+        await practice?.changeSelection(to: seedIds)
     }
 
     // MARK: - Library (DESIGN.md §2.5, §2.6)
@@ -96,6 +116,7 @@ final class AppModel {
     func refreshLibrary() async throws {
         guard let database else { return }
         library = try await database.libraryStats()
+        await resolveSelection()
     }
 
     /// §2.6: backup, then delete events, progress and sessions. Content stays.

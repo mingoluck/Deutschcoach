@@ -26,7 +26,7 @@ struct SettingsView: View {
     }
 }
 
-/// Native language, user level, voice. There is no API key in version 0.2 (DESIGN.md §6).
+/// Native language and voice. There is no API key in version 0.2 (DESIGN.md §6).
 private struct GeneralSettingsView: View {
     let model: AppModel
 
@@ -45,20 +45,6 @@ private struct GeneralSettingsView: View {
                     }
                 }
                 Text("Translations and the interface follow this language.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Level") {
-                Picker("My level", selection: Binding(
-                    get: { model.userLevel },
-                    set: { level in Task { await model.setUserLevel(level) } }
-                )) {
-                    ForEach(CEFRLevel.practiceLevels, id: \.self) { level in
-                        Text(verbatim: level.rawValue).tag(level)
-                    }
-                }
-                Text("Practice uses only the sentences of this level. The next session uses the new level.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The practice screen (DESIGN.md §6): only the German sentence, its annotation and the
-/// translation (translation mode: translation only), with record and skip buttons. After
+/// The practice screen (DESIGN.md §6): a header with the library of the current sentence and its
+/// progress; then only the German sentence, its annotation and the translation (translation
+/// mode: translation only), with record and skip buttons. After
 /// answering, the correct sentence is shown and read aloud, with mismatched words marked.
 struct PracticeView: View {
     let model: AppModel
@@ -62,9 +63,9 @@ private struct PracticeContent: View {
                 Image(systemName: "text.book.closed")
                     .font(.system(size: 36))
                     .foregroundStyle(.secondary)
-                Text("There are no sentences at level \(engine.userLevel.rawValue) yet.")
+                Text("The checked word lists have no sentences yet.")
                     .font(.title3)
-                Text("Choose another level in Settings.")
+                Text("Choose word lists in Settings › Library.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -73,6 +74,31 @@ private struct PracticeContent: View {
     // MARK: - Header
 
     private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if engine.status == .practicing, let library = engine.library {
+                libraryHeader(library)
+            }
+            sessionHeader
+        }
+    }
+
+    /// The library of the current sentence and its progress; not clickable (§6).
+    private func libraryHeader(_ library: LibraryProgress) -> some View {
+        HStack(spacing: 10) {
+            Text(verbatim: library.title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            Text(verbatim: library.level.rawValue)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            LibraryProgressBar(progress: library)
+                .frame(maxWidth: 200)
+            MasteredLabel(progress: library)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var sessionHeader: some View {
         HStack(spacing: 12) {
             if engine.status == .practicing, let item = engine.item {
                 Text(item.mode.displayName)
@@ -100,6 +126,7 @@ private struct PracticeContent: View {
         let answered = engine.step == .result
         let labels = LabelCatalog(language: language)
         VStack(alignment: .leading, spacing: 18) {
+            RegionalTag(entries: item.regional, showsHeadwords: answered)
             if answered || item.mode == .shadow {
                 AnnotatedSentenceView(item.annotation, labels: labels)
             } else if item.mode == .cloze {

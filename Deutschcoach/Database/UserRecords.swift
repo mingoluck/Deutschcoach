@@ -78,7 +78,8 @@ nonisolated struct Session: Codable, Sendable, Equatable, FetchableRecord, Mutab
     static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
 
     var id: Int64?
-    var level: CEFRLevel
+    /// The libraries (seed ids) the session was picked from; a JSON array in the database.
+    var seedIds: [String]
     var status: SessionStatus
     /// Unix time in seconds.
     var createdAt: Int64
@@ -99,6 +100,5 @@ nonisolated struct SessionItem: Codable, Sendable, Equatable, FetchableRecord, P
     var position: Int
     var sentenceId: Int64
     var mode: SentenceMode
-    var blankEntryId: Int64?
     var status: ItemStatus
 }

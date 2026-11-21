@@ -34,11 +34,11 @@ struct ContentView: View {
                     Text(verbatim: "entries").bold()
                     Text(verbatim: "sentences").bold()
                 }
-                ForEach(CEFRLevel.allCases, id: \.self) { level in
+                ForEach(model.library.seeds) { seed in
                     GridRow {
-                        Text(verbatim: level.rawValue)
-                        Text(verbatim: "\(model.library.entries[level] ?? 0)").monospacedDigit()
-                        Text(verbatim: "\(model.library.sentences[level] ?? 0)").monospacedDigit()
+                        Text(verbatim: seed.seedId)
+                        Text(verbatim: "\(seed.entryCount)").monospacedDigit()
+                        Text(verbatim: "\(model.library.progress[seed.seedId]?.total ?? 0)").monospacedDigit()
                     }
                 }
                 Divider()

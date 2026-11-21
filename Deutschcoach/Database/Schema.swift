@@ -1,6 +1,6 @@
-// v3 + v4 give the schema of docs/DESIGN.md §2.2 (version 0.2); keep them identical to the design
+// v3 to v5 give the schema of docs/DESIGN.md §2.2 (version 0.2); keep them identical to the design
 // document. v1 and v2 are the version 0.1 schema; v3 drops their tables. v4 (M13) replaces the
-// two mastery dimensions with one ladder.
+// two mastery dimensions with one ladder; v5 (M14) practices by library.
 // Never edit a shipped migration; add a new one instead.
 
 nonisolated enum Schema {
@@ -252,5 +252,43 @@ CREATE TABLE progress (
 );
 
 ALTER TABLE practice_event DROP COLUMN dimension;
+"""
+
+    /// M14: practice draws from libraries (seeds) instead of a user level (DESIGN.md §3.2), and
+    /// cloze blanks follow from `sentence_entry`. Tables are rebuilt because SQLite cannot drop a
+    /// column that has a foreign key; GRDB runs migrations with foreign keys checked at the end.
+    /// A session of the former level is recorded with every library of that level.
+    static let v5 = """
+CREATE TABLE new_session (
+  id          INTEGER PRIMARY KEY,
+  seed_ids    JSON NOT NULL,           -- the libraries it was picked from, e.g. ["goethe_a1","goethe_a2"]
+  status      TEXT NOT NULL CHECK (status IN ('active','done')),
+  created_at  INTEGER NOT NULL,
+  finished_at INTEGER
+);
+INSERT INTO new_session (id, seed_ids, status, created_at, finished_at)
+  SELECT id,
+         (SELECT json_group_array(seed_id) FROM (SELECT seed_id FROM seed_import
+            WHERE seed_import.level = session.level ORDER BY seed_id)),
+         status, created_at, finished_at
+  FROM session;
+
+CREATE TABLE new_session_item (
+  session_id     INTEGER NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+  position       INTEGER NOT NULL,     -- 1-10
+  sentence_id    INTEGER NOT NULL REFERENCES sentence(id),
+  mode           TEXT NOT NULL CHECK (mode IN ('shadow','cloze','recall')),
+  status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','skipped')),
+  PRIMARY KEY (session_id, position)
+);
+INSERT INTO new_session_item (session_id, position, sentence_id, mode, status)
+  SELECT session_id, position, sentence_id, mode, status FROM session_item;
+
+DROP TABLE session_item;
+DROP TABLE session;
+ALTER TABLE new_session RENAME TO session;
+ALTER TABLE new_session_item RENAME TO session_item;
+
+CREATE INDEX idx_sentence_seed ON sentence(seed_id, status);
 """
 }

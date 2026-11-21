@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Settings › Library (DESIGN.md §6): what the database holds, the imported word lists (§2.5),
-/// and clearing data (§2.6).
+/// Settings › Library (DESIGN.md §6): the imported libraries (§2.5) with the ones practiced
+/// checked and their progress, and clearing data (§2.6).
 struct LibrarySettingsView: View {
     let model: AppModel
 
@@ -16,27 +16,23 @@ struct LibrarySettingsView: View {
 
     var body: some View {
         Form {
-            Section("Content") {
-                countsGrid
-            }
-
-            Section("Word Lists") {
+            Section {
                 if model.library.seeds.isEmpty {
                     Text("No word list imported.").foregroundStyle(.secondary)
-                } else {
-                    ForEach(model.library.seeds) { seed in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(verbatim: seed.title)
-                            Text("\(seed.seedId) · v\(seed.version) · \(seed.entryCount) entries · \(seed.sentenceCount) sentences · \(Date(timeIntervalSince1970: TimeInterval(seed.importedAt)), format: .dateTime.year().month().day().hour().minute())")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                }
+                ForEach(model.library.seeds) { seed in
+                    libraryRow(seed)
                 }
                 ForEach(model.seedFailures) { failure in
                     Label("\(failure.seedId) could not be imported: \(failure.message)", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.red)
                 }
+            } header: {
+                Text("Word Lists")
+            } footer: {
+                Text("Practice draws from the checked word lists. Changing them starts a new session.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Clear Data") {
@@ -83,27 +79,32 @@ struct LibrarySettingsView: View {
         confirmation == .reset ? "Reset the database?" : "Clear the practice records?"
     }
 
-    private var countsGrid: some View {
-        Grid(alignment: .trailing, horizontalSpacing: 20, verticalSpacing: 6) {
-            GridRow {
-                Text(verbatim: "")
-                ForEach(CEFRLevel.practiceLevels, id: \.self) { level in
-                    Text(verbatim: level.rawValue).bold()
+    /// One library: checkbox (practiced or not), title, level, progress and import details (§6).
+    /// The last checked library cannot be unchecked.
+    private func libraryRow(_ seed: SeedImport) -> some View {
+        let isOn = model.practiceSeeds.contains(seed.seedId)
+        return Toggle(isOn: Binding(
+            get: { isOn },
+            set: { on in Task { await model.setPracticed(seed.seedId, on) } }
+        )) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(verbatim: seed.title)
+                    Text(verbatim: seed.level.rawValue).font(.caption).foregroundStyle(.secondary)
                 }
-            }
-            GridRow {
-                Text("Entries").gridColumnAlignment(.leading)
-                ForEach(CEFRLevel.practiceLevels, id: \.self) { level in
-                    Text("\(model.library.entries[level] ?? 0)").monospacedDigit()
+                if let progress = model.library.progress[seed.seedId] {
+                    HStack(spacing: 10) {
+                        LibraryProgressBar(progress: progress).frame(width: 180)
+                        MasteredLabel(progress: progress)
+                    }
                 }
-            }
-            GridRow {
-                Text("Sentences").gridColumnAlignment(.leading)
-                ForEach(CEFRLevel.practiceLevels, id: \.self) { level in
-                    Text("\(model.library.sentences[level] ?? 0)").monospacedDigit()
-                }
+                Text("\(seed.seedId) · v\(seed.version) · \(seed.entryCount) entries · \(seed.sentenceCount) sentences · \(Date(timeIntervalSince1970: TimeInterval(seed.importedAt)), format: .dateTime.year().month().day().hour().minute())")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
+        .toggleStyle(.checkbox)
+        .disabled(isOn && model.practiceSeeds.count == 1)
     }
 
     // MARK: - Actions

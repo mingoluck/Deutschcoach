@@ -50,7 +50,9 @@ struct HistoryView: View {
                 }
             }
             .font(.headline)
-            Text(verbatim: session.level.rawValue).foregroundStyle(.secondary)
+            Text(verbatim: session.libraries.joined(separator: ", "))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             Spacer()
             Text("\(session.passed) / \(session.items.count)")
                 .monospacedDigit()
@@ -67,6 +69,7 @@ struct HistoryView: View {
                     Text("\(item.position)").monospacedDigit().foregroundStyle(.secondary)
                     Text(item.mode.displayName).font(.caption).foregroundStyle(.secondary)
                 }
+                RegionalTag(entries: item.regional, showsHeadwords: true)
                 AnnotatedSentenceView(item.annotation, labels: labels)
                 Text(item.sentence.translation(for: language) ?? "")
                     .foregroundStyle(.secondary)

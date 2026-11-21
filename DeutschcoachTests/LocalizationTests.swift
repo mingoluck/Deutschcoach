@@ -28,6 +28,8 @@ struct LocalizationTests {
         let table = try #require(NSDictionary(contentsOf: url) as? [String: String])
         #expect(table["Practice"] == "练习")
         #expect(table["Retry"] == "重试")
+        #expect(table["Austrian usage"] == "奥地利用法")
+        #expect(table["Mastered %lld / %lld"] == "已掌握 %1$lld / %2$lld")
         #expect(table.count >= 40)
     }
 }

@@ -5,9 +5,6 @@ import GRDB
 
 nonisolated enum CEFRLevel: String, Codable, Sendable, CaseIterable {
     case a1 = "A1", a2 = "A2", b1 = "B1", b2 = "B2"
-
-    /// The levels with bundled content, offered in Settings (DESIGN.md §3.2).
-    static let practiceLevels: [CEFRLevel] = [.a1, .a2, .b1]
 }
 
 nonisolated enum ContentStatus: String, Codable, Sendable {

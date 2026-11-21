@@ -24,7 +24,7 @@ nonisolated struct AnyRandomSource: RandomNumberGenerator, @unchecked Sendable {
 final class PracticeEngine {
     enum Status: Equatable {
         case starting
-        /// The user's level has no sentence to practice (§3.1).
+        /// The checked libraries have no sentence to practice (§6).
         case noContent
         case practicing
         /// Database or other errors that stop practice.
@@ -54,7 +54,10 @@ final class PracticeEngine {
     private(set) var speechState: SpeechState = .checking
     /// A recording or recognition error; the sentence can be answered again.
     private(set) var speechError: String?
-    private(set) var userLevel: CEFRLevel
+    /// The checked libraries (seed ids) new sessions are picked from (§3.2).
+    private(set) var seedIds: [String]
+    /// The progress of the current sentence's library, for the header (§6).
+    private(set) var library: LibraryProgress?
     /// Called after a session is finished, e.g. to refresh the history.
     var onSessionFinished: (() -> Void)?
 
@@ -73,14 +76,14 @@ final class PracticeEngine {
         database: AppDatabase,
         recognizer: any SpeechRecognizer = AppleSpeechRecognizer(),
         speaker: any SentenceSpeaker = Speaker(),
-        userLevel: CEFRLevel = .a1,
+        seedIds: [String] = [],
         now: @escaping @Sendable () -> Date = { Date() },
         random: any RandomNumberGenerator = SystemRandomNumberGenerator()
     ) {
         store = PracticeStore(database: database, now: now)
         self.recognizer = recognizer
         self.speaker = speaker
-        self.userLevel = userLevel
+        self.seedIds = seedIds
         rng = AnyRandomSource(base: random)
     }
 
@@ -119,10 +122,10 @@ final class PracticeEngine {
         item = nil
         outcome = nil
         sessionId = nil
-        let level = userLevel
-        let candidates = try await store.candidates(level: level)
+        let seedIds = self.seedIds
+        let candidates = try await store.candidates(seedIds: seedIds)
         let picks = SessionBuilder.pick(from: candidates, now: store.now(), using: &rng)
-        guard let id = try await store.createSession(level: level, picks: picks) else {
+        guard let id = try await store.createSession(seedIds: seedIds, picks: picks) else {
             status = .noContent
             return
         }
@@ -139,6 +142,7 @@ final class PracticeEngine {
         stopRecording()
         speaker.stop()
         item = nil
+        library = nil
         outcome = nil
         sessionId = nil
         sessionDone = false
@@ -163,15 +167,22 @@ final class PracticeEngine {
         await launch()
     }
 
-    /// §3.1: the active session is finished as is; the next one uses `level`.
-    func changeLevel(to level: CEFRLevel) async {
-        guard level != userLevel else { return }
-        logger.info("User level \(self.userLevel.rawValue, privacy: .public) → \(level.rawValue, privacy: .public)")
-        userLevel = level
-        if started, status == .noContent {
-            stopAll()
-            await launch()
+    /// §3.1: the checked libraries changed. The active session ends at once (answered items stay
+    /// in the history) and a new one is built from `seedIds`.
+    func changeSelection(to seedIds: [String]) async {
+        guard seedIds != self.seedIds else { return }
+        logger.info("Libraries \(self.seedIds, privacy: .public) → \(seedIds, privacy: .public)")
+        self.seedIds = seedIds
+        guard started else { return }
+        stopAll()
+        do {
+            try await store.endActiveSession()
+            onSessionFinished?()
+        } catch {
+            fail(error)
+            return
         }
+        await launch()
     }
 
     // MARK: - Sentences
@@ -188,6 +199,7 @@ final class PracticeEngine {
         speechError = nil
         step = .prompt
         progress = try await store.progress(ofSession: sessionId)
+        library = try await store.libraryProgress(seedId: next.sentence.seedId)
         status = .practicing
         // §3.3: only shadowing reads the sentence before the answer.
         if next.mode == .shadow { speak(next.sentence.de) }
@@ -295,6 +307,7 @@ final class PracticeEngine {
             sessionDone = try await store.record(answer, for: item)
             if sessionDone { onSessionFinished?() }
             if let sessionId { progress = try await store.progress(ofSession: sessionId) }
+            library = try await store.libraryProgress(seedId: item.sentence.seedId)
             outcome = ScoredAnswer(heard: heard, result: result)
             step = .result
             // §3.3: after answering, the correct sentence is shown and read aloud.

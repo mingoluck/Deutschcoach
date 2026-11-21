@@ -7,6 +7,8 @@ nonisolated struct HistoryItem: Sendable, Equatable, Identifiable {
     var mode: SentenceMode
     var sentence: Sentence
     var annotation: SentenceAnnotation
+    /// Austrian or Swiss entries of the sentence (§3.3).
+    var regional: [RegionalEntry] = []
     /// The scored answer; nil when the item has no event (e.g. an unanswered item).
     var outcome: ScoredAnswer?
 
@@ -15,7 +17,8 @@ nonisolated struct HistoryItem: Sendable, Equatable, Identifiable {
 
 nonisolated struct HistorySession: Sendable, Equatable, Identifiable {
     var id: Int64
-    var level: CEFRLevel
+    /// Titles of the libraries the session was picked from.
+    var libraries: [String]
     var finishedAt: Date?
     var items: [HistoryItem]
 
@@ -28,6 +31,7 @@ nonisolated struct HistoryStore: Sendable {
 
     func load() async throws -> [HistorySession] {
         try await database.writer.read { db in
+            let titles = Dictionary(uniqueKeysWithValues: try SeedImport.fetchAll(db).map { ($0.seedId, $0.title) })
             let sessions = try Session
                 .filter(Column("status") == SessionStatus.done.rawValue)
                 .order(Column("finished_at").desc, Column("id").desc)
@@ -37,7 +41,7 @@ nonisolated struct HistoryStore: Sendable {
                 let items = try SessionItem.filter(Column("session_id") == session.id).order(Column("position")).fetchAll(db)
                 return HistorySession(
                     id: session.id!,
-                    level: session.level,
+                    libraries: session.seedIds.map { titles[$0] ?? $0 },
                     finishedAt: session.finishedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) },
                     items: try items.map { try Self.item($0, db: db) }
                 )
@@ -63,6 +67,7 @@ nonisolated struct HistoryStore: Sendable {
             outcome = ScoredAnswer(heard: detail?.heard, result: result)
         }
         return HistoryItem(position: item.position, mode: item.mode, sentence: sentence,
-                           annotation: try sentence.decodedAnnotation(), outcome: outcome)
+                           annotation: try sentence.decodedAnnotation(),
+                           regional: try RegionalEntry.load(sentenceId: sentence.id, db: db), outcome: outcome)
     }
 }
