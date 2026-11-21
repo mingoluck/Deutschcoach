@@ -8,6 +8,17 @@ nonisolated struct Alignment: Sendable, Equatable {
         case substituted(heard: String)
         /// The word was not heard at all.
         case missing
+        /// A foreign name, which is not checked (DESIGN.md §3.4). The last word of a run of
+        /// names carries what was heard in place of the whole run; the others carry nil.
+        case name(heard: String?)
+
+        /// Whether the word counts as correct.
+        var isAccepted: Bool {
+            switch self {
+            case .match, .name: true
+            case .substituted, .missing: false
+            }
+        }
     }
 
     struct Word: Sendable, Equatable {
@@ -22,8 +33,9 @@ nonisolated struct Alignment: Sendable, Equatable {
     /// Heard words that do not correspond to any target word.
     var extra: [String]
 
-    var allMatched: Bool { words.allSatisfy { $0.status == .match } }
-    var matchedCount: Int { words.filter { $0.status == .match }.count }
+    /// Whether every word is correct (foreign names count as correct).
+    var allMatched: Bool { words.allSatisfy(\.status.isAccepted) }
+    var matchedCount: Int { words.filter(\.status.isAccepted).count }
 }
 
 nonisolated enum WordAligner {
@@ -115,8 +127,10 @@ nonisolated enum WordAligner {
     // MARK: - Alignment
 
     /// Aligns `heard` against target tokens. Tokens that normalize to nothing (punctuation) are
-    /// not part of the result.
-    static func align(target tokens: [String], heard: String) -> Alignment {
+    /// not part of the result. Target words whose key is in `names` are foreign names: a run of
+    /// them matches any 1 to 2×(run length) heard words (DESIGN.md §3.4), except words of the
+    /// sentence itself, which keeps a run from taking over a neighbor's word.
+    static func align(target tokens: [String], heard: String, names: Set<String> = []) -> Alignment {
         let target: [(index: Int, text: String, key: String)] = tokens.enumerated().compactMap { index, token in
             let key = normalize(token)
             return key.isEmpty ? nil : (index, token, key)
@@ -124,38 +138,82 @@ nonisolated enum WordAligner {
         // Keep the heard words' original spelling for display.
         let heardTokens = heardTokens(heard)
 
-        let n = target.count, m = heardTokens.count
-        // cost[i][j] = edit distance between target[i...] and heard[j...]
+        // Alignment units: a single word, or a run of consecutive foreign names.
+        var units: [(range: Range<Int>, isName: Bool)] = []
+        var start = 0
+        while start < target.count {
+            var end = start + 1
+            let isName = names.contains(target[start].key)
+            if isName {
+                while end < target.count, names.contains(target[end].key) { end += 1 }
+            }
+            units.append((start..<end, isName))
+            start = end
+        }
+
+        let n = units.count, m = heardTokens.count
+        let sentenceWords = Set(target.map(\.key)).subtracting(names)
+        // Heard words a run of names may stand for.
+        func nameLengths(_ u: Int, from j: Int) -> Range<Int> {
+            var longest = 0
+            while longest < min(2 * units[u].range.count, m - j),
+                  !sentenceWords.contains(heardTokens[j + longest].key) { longest += 1 }
+            return 1..<longest + 1
+        }
+        // cost[u][j] = edit distance between units[u...] and heard[j...]; a missing unit costs
+        // one per word.
         var cost = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
-        for i in stride(from: n, through: 0, by: -1) {
+        for u in stride(from: n, through: 0, by: -1) {
             for j in stride(from: m, through: 0, by: -1) {
-                if i == n { cost[i][j] = m - j; continue }
-                if j == m { cost[i][j] = n - i; continue }
-                let same = matches(target[i].key, heardTokens[j].key)
-                cost[i][j] = min(
-                    cost[i + 1][j + 1] + (same ? 0 : 1),  // match / substitution
-                    cost[i + 1][j] + 1,                    // target word missing
-                    cost[i][j + 1] + 1                     // extra heard word
-                )
+                if u == n { cost[u][j] = m - j; continue }
+                let missing = cost[u + 1][j] + units[u].range.count
+                if j == m { cost[u][j] = missing; continue }
+                var best = min(missing, cost[u][j + 1] + 1)  // unit missing / extra heard word
+                if units[u].isName {
+                    for k in nameLengths(u, from: j) { best = min(best, cost[u + 1][j + k]) }
+                } else {
+                    let same = matches(target[units[u].range.lowerBound].key, heardTokens[j].key)
+                    best = min(best, cost[u + 1][j + 1] + (same ? 0 : 1))  // match / substitution
+                }
+                cost[u][j] = best
             }
         }
 
         var words: [Alignment.Word] = []
         var extra: [String] = []
-        var i = 0, j = 0
-        while i < n || j < m {
-            if i < n, j < m {
-                let same = matches(target[i].key, heardTokens[j].key)
-                if cost[i][j] == cost[i + 1][j + 1] + (same ? 0 : 1) {
-                    let status: Alignment.Status = same ? .match : .substituted(heard: heardTokens[j].text)
-                    words.append(.init(index: target[i].index, text: target[i].text, status: status))
-                    i += 1; j += 1
-                    continue
+        var u = 0, j = 0
+        traceback: while u < n || j < m {
+            if u < n, j < m {
+                let range = units[u].range
+                if units[u].isName {
+                    for k in nameLengths(u, from: j) where cost[u][j] == cost[u + 1][j + k] {
+                        let said = heardTokens[j..<j + k]
+                        let exact = said.map(\.key) == target[range].map(\.key)
+                        let heardText = said.map(\.text).joined(separator: " ")
+                        for t in range {
+                            let status: Alignment.Status = exact ? .match
+                                : .name(heard: t == range.upperBound - 1 ? heardText : nil)
+                            words.append(.init(index: target[t].index, text: target[t].text, status: status))
+                        }
+                        u += 1; j += k
+                        continue traceback
+                    }
+                } else {
+                    let word = target[range.lowerBound]
+                    let same = matches(word.key, heardTokens[j].key)
+                    if cost[u][j] == cost[u + 1][j + 1] + (same ? 0 : 1) {
+                        let status: Alignment.Status = same ? .match : .substituted(heard: heardTokens[j].text)
+                        words.append(.init(index: word.index, text: word.text, status: status))
+                        u += 1; j += 1
+                        continue
+                    }
                 }
             }
-            if i < n, cost[i][j] == cost[i + 1][j] + 1 {
-                words.append(.init(index: target[i].index, text: target[i].text, status: .missing))
-                i += 1
+            if u < n, cost[u][j] == cost[u + 1][j] + units[u].range.count {
+                for t in units[u].range {
+                    words.append(.init(index: target[t].index, text: target[t].text, status: .missing))
+                }
+                u += 1
             } else {
                 extra.append(heardTokens[j].text)
                 j += 1
@@ -167,9 +225,9 @@ nonisolated enum WordAligner {
     /// Aligns two texts that are tokenized the same way, digits and clock times included, so that
     /// `um 15.30 Uhr` in a sentence matches `um 15:30 Uhr` or `um fünfzehn Uhr dreißig` heard
     /// (DESIGN.md §3.4). Word indices refer to the expanded words of `expected`.
-    static func align(expected: String, heard: String) -> Alignment {
+    static func align(expected: String, heard: String, names: Set<String> = []) -> Alignment {
         let expectedWords = heardTokens(expected)
-        var alignment = align(target: expectedWords.map(\.key), heard: heard)
+        var alignment = align(target: expectedWords.map(\.key), heard: heard, names: names)
         // Show the words as written in `expected` (an expanded number shows its spelled-out word).
         for offset in alignment.words.indices {
             let word = alignment.words[offset]

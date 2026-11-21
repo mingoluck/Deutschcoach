@@ -147,6 +147,68 @@ struct AnswerMatcherTests {
     }
 }
 
+// MARK: - Foreign names (DESIGN.md §3.4)
+
+struct ForeignNameTests {
+    private let sentence = "Meine Familiennamen sind García González."
+    private let names: Set = ["garcía", "gonzález"]
+
+    private func score(_ heard: String?) -> AnswerMatcher.Result {
+        AnswerMatcher.score(de: sentence, spoken: nil, heard: heard, names: names)
+    }
+
+    @Test func onlyProperNounsWithNonGermanLettersAreForeignNames() {
+        let token = { (form: String, pos: String) in AnnotationToken(form: form, lemma: form, pos: pos, feature: "") }
+        #expect(token("García", "PROPN").isForeignName)
+        #expect(token("José", "PROPN").isForeignName)
+        #expect(token("Özgen", "PROPN").isForeignName == false)
+        #expect(token("Müller", "PROPN").isForeignName == false)
+        #expect(token("Watanabe", "PROPN").isForeignName == false)
+        #expect(token("Café", "NOUN").isForeignName == false)
+        let annotation = SentenceAnnotation(
+            words: [token("Ich", "PRON"), token("heiße", "VERB"), token("José", "PROPN"), token(".", "PUNCT")], spans: [])
+        #expect(annotation.foreignNames == ["josé"])
+    }
+
+    @Test func misheardNamesPass() {
+        #expect(score("Meine Familiennamen sind Cassia Casalez").outcome == .pass)
+        // A name may be heard as more or fewer words.
+        #expect(score("meine Familiennamen sind Garsia").outcome == .pass)
+        #expect(score("Meine Familiennamen sind Gar sie a Gonsales").outcome == .pass)
+        #expect(score("Meine Familiennamen sind García González").outcome == .pass)
+    }
+
+    @Test func otherWordsAreStillChecked() {
+        let result = score("Meine Familieamen sind Cassia Casalez.")
+        #expect(result.outcome == .fail)
+        #expect(result.mismatched == [1])
+        #expect(result.alignment?.words.map(\.status) == [
+            .match, .substituted(heard: "Familieamen"), .match, .name(heard: nil), .name(heard: "Cassia Casalez."),
+        ])
+    }
+
+    @Test func namesHeardRightAreMatches() {
+        let result = score("Meine Familienamen sind García González")
+        #expect(result.alignment?.words.suffix(2).map(\.status) == [.match, .match])
+    }
+
+    @Test func unsaidNamesAreMissing() {
+        let result = score("Meine Familiennamen sind")
+        #expect(result.outcome == .fail)
+        #expect(result.mismatched == [3, 4])
+    }
+
+    @Test func aNameRunTakesAtMostTwiceItsLength() {
+        let result = AnswerMatcher.score(de: "Das ist José.", spoken: nil, heard: "Das ist Ho se und so", names: ["josé"])
+        #expect(result.outcome == .fail)
+        #expect(result.alignment?.extra == ["und", "so"])
+    }
+
+    @Test func properNounsWithGermanLettersAreChecked() {
+        #expect(AnswerMatcher.score(de: "Ich wohne in Berlin.", spoken: nil, heard: "Ich wohne in Bern").outcome == .fail)
+    }
+}
+
 // MARK: - Session building (DESIGN.md §3.2)
 
 struct SessionBuilderTests {

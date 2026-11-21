@@ -57,17 +57,19 @@ nonisolated struct HistoryStore: Sendable {
             .filter(Column("session_id") == item.sessionId && Column("sentence_id") == item.sentenceId)
             .order(Column("id").desc)
             .fetchOne(db)
+        let annotation = try sentence.decodedAnnotation()
         var outcome: ScoredAnswer?
         if let event {
             let detail = event.detail.flatMap { try? JSONDecoder().decode(PracticeEventDetail.self, from: Data($0.utf8)) }
             // The comparison is recomputed from the stored transcription, as on the practice screen.
             var result = AnswerMatcher.score(de: sentence.de, spoken: sentence.spoken, heard: detail?.heard,
-                                             skipped: detail?.reason == .skipped)
+                                             skipped: detail?.reason == .skipped,
+                                             names: annotation.foreignNames)
             result.outcome = event.outcome
             outcome = ScoredAnswer(heard: detail?.heard, result: result)
         }
         return HistoryItem(position: item.position, mode: item.mode, sentence: sentence,
-                           annotation: try sentence.decodedAnnotation(),
+                           annotation: annotation,
                            regional: try RegionalEntry.load(sentenceId: sentence.id, db: db), outcome: outcome)
     }
 }

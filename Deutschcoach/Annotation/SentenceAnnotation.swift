@@ -51,6 +51,21 @@ nonisolated struct AnnotationToken: Codable, Sendable, Equatable {
     }
 
     var isPunctuation: Bool { pos == PartOfSpeech.punct.rawValue }
+
+    /// A proper noun spelled with a letter outside the German alphabet (`García`, `José`). A
+    /// German recognizer cannot write such names, so answers do not check them (DESIGN.md §3.4).
+    var isForeignName: Bool {
+        pos == PartOfSpeech.propn.rawValue && form.contains { $0.isLetter && !Self.germanLetters.contains($0) }
+    }
+
+    private static let germanLetters = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZäöüÄÖÜßẞ")
+}
+
+nonisolated extension SentenceAnnotation {
+    /// The foreign names of the sentence, as normalized words (see `WordAligner.normalize`).
+    var foreignNames: Set<String> {
+        Set(words.filter(\.isForeignName).map { WordAligner.normalize($0.form) })
+    }
 }
 
 /// A constituent or clause over a (possibly non-contiguous) set of token indices.

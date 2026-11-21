@@ -297,7 +297,8 @@ final class PracticeEngine {
     /// skipped. Internal so tests can answer without audio.
     func submit(heard: String?, skipped: Bool) async {
         guard let item, step != .result else { return }
-        let result = AnswerMatcher.score(de: item.sentence.de, spoken: item.sentence.spoken, heard: heard, skipped: skipped)
+        let result = AnswerMatcher.score(de: item.sentence.de, spoken: item.sentence.spoken, heard: heard, skipped: skipped,
+                                        names: item.annotation.foreignNames)
         logger.info("Sentence #\(item.sentence.id) (\(item.mode.rawValue, privacy: .public)): \(result.outcome.rawValue, privacy: .public)")
         let answer = AnswerRecord(
             outcome: result.outcome, reason: result.reason, heard: heard,

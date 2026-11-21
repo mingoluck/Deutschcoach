@@ -11,19 +11,21 @@ nonisolated enum AnswerMatcher {
 
         /// Indices of the words of the compared reading that did not match.
         var mismatched: [Int] {
-            alignment?.words.filter { $0.status != .match }.map(\.index) ?? []
+            alignment?.words.filter { !$0.status.isAccepted }.map(\.index) ?? []
         }
     }
 
-    /// `heard` is the final transcription, nil when skipped.
-    static func score(de: String, spoken: String?, heard: String?, skipped: Bool = false) -> Result {
+    /// `heard` is the final transcription, nil when skipped. `names` are the sentence's foreign
+    /// names (`SentenceAnnotation.foreignNames`), which are not checked.
+    static func score(de: String, spoken: String?, heard: String?, skipped: Bool = false,
+                      names: Set<String> = []) -> Result {
         if skipped { return Result(outcome: .notAttempted, reason: .skipped) }
         guard let heard, hasSpeech(heard) else { return Result(outcome: .notAttempted, reason: .noSpeech) }
 
         // The answer may match the reading in words (`spoken`) or the written form with digits
         // (`de`); digits are expanded the same way on both sides.
         let readings = [spoken, de].compactMap { $0 }
-        let alignments = readings.map { WordAligner.align(expected: $0, heard: heard) }
+        let alignments = readings.map { WordAligner.align(expected: $0, heard: heard, names: names) }
         if let exact = alignments.first(where: isExact) {
             return Result(outcome: .pass, alignment: exact)
         }
