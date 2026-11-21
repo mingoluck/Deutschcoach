@@ -498,12 +498,24 @@ Interactive visual reference: the label set review page (an artifact made by Cla
 
 ## 6. UI
 
-- **Practice screen**: a header with the library of the current sentence (title and level), its progress bar and “已掌握 X / N” (Mastered X of N), with the counts of every stage in a tooltip (not clickable); below it the mode and the position in the session. The progress of a library counts its active sentences by ladder stage (§3.5): new (no `progress` row), shadowing (1–2), cloze (3–4), translation (5–6), mastered (7). The rest shows only the German sentence, annotation, and translation (translation mode shows only the translation); a record button; a skip button; while recording, the in-progress (volatile) transcription is shown live as feedback, and only the final transcription is scored; after answering, the correct answer is shown and read aloud, with mismatched words marked.
+- **Practice screen**: a header (not clickable) with the library of the current sentence (title, level, “已掌握 X / N” Mastered X of N) and its **library progress**; below it the mode and the position in the session. The rest shows only the German sentence, annotation, and translation (translation mode shows only the translation); a record button; a skip button; while recording, the in-progress (volatile) transcription is shown live as feedback, and only the final transcription is scored; after answering, the correct answer is shown and read aloud, with mismatched words marked.
+- **Library progress** counts the library's active sentences (N) by their ladder level (§3.5), shown as:
+  - a bar segmented by current stage: shadowing (1–2), cloze (3–4), translation (5–6), mastered (7), with new sentences (no `progress` row) as the track;
+  - five rings after the bar, each a share of N in whole percent (a share that is neither zero nor whole never shows as 0 % or 100 %):
+
+| Ring | Sentences counted |
+|---|---|
+| 已练 Practiced | practiced at least once (have a `progress` row) |
+| 复述 Shadowing | level ≥ 2 |
+| 填空 Cloze | level ≥ 4 |
+| 翻译 Translation | level ≥ 6 |
+| 已掌握 Mastered | level 7 |
+
 - **While the bundled seeds are imported** (first launch or after an app update), the practice screen shows a short progress state.
 - **History screen**: the 10 most recent sessions, read-only, each with the titles of its libraries. Each sentence shows its regional tag (§3.3), its annotation, translation, mode and result (passed, mismatched words, skipped), from `practice_event`.
 - **Settings screen**: the standard macOS Settings window (⌘,) with two tabs:
   - “通用” (General): native language (中文 / English) and voice selection (installed German voices, stored in UserDefaults, with a preview). There is no API key field in 0.2.
-  - “词库” (Library): every library from `seed_import` with a checkbox (the libraries practiced), its title and level, its progress bar and “已掌握 X / N”, and its id, version, counts and import time; “清空练习记录” (Clear Practice Records) and “重置数据库” (Reset Database) (§2.6).
+  - “词库” (Library): every library from `seed_import` with a checkbox (the libraries practiced), its title and level, “已掌握 X / N” and its library progress, and its id, version, counts and import time; “清空练习记录” (Clear Practice Records) and “重置数据库” (Reset Database) (§2.6).
 - **When the checked libraries have no sentence**, the practice screen says so (“所选词库还没有句子。”) and points to Settings › Library.
 - The main window has two tabs: practice and history. Of the milestone lab screens, only speech and database remain, in Debug builds only. The database lab has a “Load debug seed” button: a 12-sentence A1 seed compiled into Debug builds only (`DebugSeed`, keys `a1.dbg_*` so they never clash with the Goethe seeds), which is also the unit-test fixture.
 

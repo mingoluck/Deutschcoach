@@ -93,10 +93,12 @@ struct LibrarySettingsView: View {
                     Text(verbatim: seed.level.rawValue).font(.caption).foregroundStyle(.secondary)
                 }
                 if let progress = model.library.progress[seed.seedId] {
-                    HStack(spacing: 10) {
-                        LibraryProgressBar(progress: progress).frame(width: 180)
-                        MasteredLabel(progress: progress)
+                    MasteredLabel(progress: progress)
+                    HStack(spacing: 14) {
+                        LibraryProgressBar(progress: progress).frame(width: 140)
+                        LibraryRings(progress: progress)
                     }
+                    .padding(.vertical, 2)
                 }
                 Text("\(seed.seedId) · v\(seed.version) · \(seed.entryCount) entries · \(seed.sentenceCount) sentences · \(Date(timeIntervalSince1970: TimeInterval(seed.importedAt)), format: .dateTime.year().month().day().hour().minute())")
                     .font(.caption)

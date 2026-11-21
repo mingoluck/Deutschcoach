@@ -312,6 +312,9 @@ struct PracticeStoreTests {
         #expect(progress.level == .a1)
         #expect((progress.new, progress.shadow, progress.cloze, progress.recall, progress.mastered) == (7, 2, 1, 1, 1))
         #expect(progress.total == 12 && progress.practiced == 5)
+        // The five rings (§6): practiced, level ≥ 2, ≥ 4, ≥ 6, 7.
+        let rings: [Int] = [progress.practiced, progress.reached(2), progress.reached(4), progress.reached(6), progress.reached(7)]
+        #expect(rings == [5, 4, 2, 2, 1])
         #expect(try await PracticeStore(database: database).libraryProgress(seedId: "missing") == nil)
     }
 
@@ -577,5 +580,23 @@ struct PracticeSelectionTests {
         #expect(PracticeSelection.resolve(stored: nil, legacyLevel: "B2", seeds: seeds) == ["goethe_a1"])
         #expect(PracticeSelection.resolve(stored: nil, legacyLevel: nil, seeds: [seed("debug_a1", .a1, .user)]) == ["debug_a1"])
         #expect(PracticeSelection.resolve(stored: ["goethe_a1"], legacyLevel: nil, seeds: []).isEmpty)
+    }
+}
+
+// MARK: - Library progress rings (DESIGN.md §6)
+
+struct LibraryRingsTests {
+    @Test func percentNeverHidesAStartedOrUnfinishedShare() {
+        #expect(LibraryRings.percent(count: 0, share: 0) == "0%")
+        #expect(LibraryRings.percent(count: 1, share: 1.0 / 4898) == "<1%")
+        #expect(LibraryRings.percent(count: 1, share: 0.25) == "25%")
+        #expect(LibraryRings.percent(count: 4897, share: 4897.0 / 4898) == "99%")
+        #expect(LibraryRings.percent(count: 12, share: 1) == "100%")
+    }
+
+    @Test func emptyLibraryHasNoShare() {
+        let empty = LibraryProgress(seedId: "x", title: "x", level: .a1)
+        #expect(empty.total == 0)
+        #expect(empty.share(0) == 0.0)
     }
 }

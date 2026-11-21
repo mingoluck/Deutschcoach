@@ -84,17 +84,23 @@ private struct PracticeContent: View {
 
     /// The library of the current sentence and its progress; not clickable (§6).
     private func libraryHeader(_ library: LibraryProgress) -> some View {
-        HStack(spacing: 10) {
-            Text(verbatim: library.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            Text(verbatim: library.level.rawValue)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            LibraryProgressBar(progress: library)
-                .frame(maxWidth: 200)
-            MasteredLabel(progress: library)
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text(verbatim: library.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Text(verbatim: library.level.rawValue)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                MasteredLabel(progress: library)
+            }
+            HStack(spacing: 16) {
+                LibraryProgressBar(progress: library)
+                    .frame(maxWidth: 220)
+                LibraryRings(progress: library)
+                Spacer(minLength: 0)
+            }
         }
     }
 

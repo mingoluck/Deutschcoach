@@ -4,33 +4,38 @@ import os
 
 private nonisolated let logger = Logger(subsystem: "com.ming.Deutschcoach", category: "database")
 
-/// The active sentences of one library by stage of the mastery ladder (DESIGN.md §3.5, §6).
+/// The active sentences of one library by level of the mastery ladder (DESIGN.md §3.5, §6).
 nonisolated struct LibraryProgress: Sendable, Equatable {
     var seedId: String
     var title: String
     var level: CEFRLevel
     /// No `progress` row yet.
     var new = 0
-    /// Levels 1–2.
-    var shadow = 0
-    /// Levels 3–4.
-    var cloze = 0
-    /// Levels 5–6.
-    var recall = 0
-    /// Level 7.
-    var mastered = 0
+    /// Practiced sentences by ladder level; index 0 is unused.
+    var byLevel = Array(repeating: 0, count: MasteryRules.maxLevel + 1)
 
-    var total: Int { new + shadow + cloze + recall + mastered }
-    var practiced: Int { total - new }
+    var practiced: Int { byLevel.reduce(0, +) }
+    var total: Int { new + practiced }
+
+    /// Practiced sentences at `level` or above.
+    func reached(_ level: Int) -> Int {
+        byLevel[max(level, MasteryRules.minLevel)...].reduce(0, +)
+    }
+
+    /// Current stage, for the progress bar: levels 1–2, 3–4, 5–6 and 7.
+    var shadow: Int { reached(1) - reached(3) }
+    var cloze: Int { reached(3) - reached(5) }
+    var recall: Int { reached(5) - reached(MasteryRules.masteredLevel) }
+    var mastered: Int { reached(MasteryRules.masteredLevel) }
+
+    /// `count` as a share of all active sentences, 0 for an empty library.
+    func share(_ count: Int) -> Double {
+        total == 0 ? 0 : Double(count) / Double(total)
+    }
 
     mutating func add(_ count: Int, atLevel level: Int?) {
-        guard let level else { new += count; return }
-        if level >= MasteryRules.masteredLevel { mastered += count; return }
-        switch MasteryRules.mode(level: level) {
-        case .shadow: shadow += count
-        case .cloze: cloze += count
-        case .recall: recall += count
-        }
+        guard let level, byLevel.indices.contains(level), level >= MasteryRules.minLevel else { new += count; return }
+        byLevel[level] += count
     }
 
     /// The progress of every imported library, or only of `seedId`, keyed by seed id.
