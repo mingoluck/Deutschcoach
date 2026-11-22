@@ -56,10 +56,11 @@ final class AppModel {
 
     private func startPractice(_ database: AppDatabase) {
         guard practice == nil, !Self.isRunningTests else { return }
-        let history = HistoryModel(database: database)
+        let history = HistoryModel(database: database, speaker: speaker)
         self.history = history
         let engine = PracticeEngine(database: database, speaker: speaker, seedIds: practiceSeeds)
         engine.onSessionFinished = { Task { await history.reload() } }
+        history.onReplayStart = { [weak engine] in engine?.interrupt() }
         practice = engine
         // Unstructured: not cancelled together with the caller's task.
         Task { await engine.start() }

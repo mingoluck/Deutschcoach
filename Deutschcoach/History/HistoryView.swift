@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The history screen (DESIGN.md §6): the most recent finished sessions, read-only.
+/// The history screen (DESIGN.md §6): the most recent finished sessions, read-only. Checked
+/// sentences can be practiced again in a sheet that leaves no trace (§3.6).
 struct HistoryView: View {
-    let history: HistoryModel
+    @Bindable var history: HistoryModel
     let language: String
     @State private var expanded: Set<Int64> = []
 
@@ -16,18 +17,35 @@ struct HistoryView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
-                    ForEach(history.sessions) { session in
-                        DisclosureGroup(isExpanded: binding(for: session.id)) {
-                            content(session)
-                        } label: {
-                            label(session)
+                VStack(spacing: 0) {
+                    selectionBar
+                    Divider()
+                    List {
+                        ForEach(history.sessions) { session in
+                            DisclosureGroup(isExpanded: binding(for: session.id)) {
+                                content(session)
+                            } label: {
+                                label(session)
+                            }
                         }
                     }
                 }
             }
         }
         .task { await history.reload() }
+        .sheet(isPresented: replayPresented) {
+            if let engine = history.replay {
+                PracticeContent(engine: engine, language: language) { history.endReplay() }
+                    .frame(minWidth: 640, idealWidth: 760, minHeight: 520, idealHeight: 600)
+            }
+        }
+    }
+
+    private var replayPresented: Binding<Bool> {
+        Binding(
+            get: { history.replay != nil },
+            set: { if !$0 { history.endReplay() } }
+        )
     }
 
     private func binding(for id: Int64) -> Binding<Bool> {
@@ -38,6 +56,48 @@ struct HistoryView: View {
             }
         )
     }
+
+    // MARK: - Selection (§3.6)
+
+    private var selectionBar: some View {
+        let count = history.selectedItems.count
+        return HStack(spacing: 12) {
+            Text("\(count) selected")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Button("Clear") { history.selection.removeAll() }
+                .disabled(count == 0)
+            Spacer()
+            Button("Practice Again", systemImage: "arrow.counterclockwise") {
+                Task { await history.startReplay() }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(count == 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private func isSelected(_ key: HistoryItem.Key) -> Binding<Bool> {
+        Binding(
+            get: { history.selection.contains(key) },
+            set: { isOn in
+                if isOn { history.selection.insert(key) } else { history.selection.remove(key) }
+            }
+        )
+    }
+
+    private func allSelected(_ session: HistorySession) -> Binding<Bool> {
+        let keys = session.items.map(\.id)
+        return Binding(
+            get: { !keys.isEmpty && keys.allSatisfy(history.selection.contains) },
+            set: { isOn in
+                if isOn { history.selection.formUnion(keys) } else { history.selection.subtract(keys) }
+            }
+        )
+    }
+
+    // MARK: - Sessions
 
     private func label(_ session: HistorySession) -> some View {
         HStack {
@@ -63,10 +123,16 @@ struct HistoryView: View {
     @ViewBuilder
     private func content(_ session: HistorySession) -> some View {
         let labels = LabelCatalog(language: language)
+        Toggle("Select All", isOn: allSelected(session))
+            .toggleStyle(.checkbox)
+            .padding(.vertical, 4)
         ForEach(session.items) { item in
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text("\(item.position)").monospacedDigit().foregroundStyle(.secondary)
+                    Toggle(isOn: isSelected(item.id)) {
+                        Text("\(item.position)").monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    .toggleStyle(.checkbox)
                     Text(item.mode.displayName).font(.caption).foregroundStyle(.secondary)
                 }
                 RegionalTag(entries: item.regional, showsHeadwords: true)

@@ -265,7 +265,7 @@ Two actions in Settings › “词库” (Library):
 - When a session is done, the next one is built on the spot.
 - On changing the checked libraries: the `active` session ends at once. Its answered items stay in the history; its pending items are deleted, and if none was answered the session is deleted. A new session is then built from the new selection.
 - On changing the native language: only the displayed translation changes, including in the `active` session and in history.
-- History is read-only and cannot be practiced again.
+- History itself is read-only. Selected history sentences can be practiced again as a temporary re-practice (§3.6), which leaves no trace.
 
 ### 3.2 Sentence Selection and Mode Assignment
 
@@ -337,6 +337,14 @@ mode:  shadow | cloze | recall (7 = mastered)
 - `not_attempted`: no change.
 - So one passed shadowing takes a new sentence to cloze, and two passed clozes take it to translation. A mastered sentence is still picked now and then (lowest weight) and practiced as translation. The rules live in code; after adjusting them, all progress can be recomputed by replaying `practice_event`. Every event updates `last_seen_at`.
 - `progress` rows are not created in advance; a missing row means a new sentence: level 2 with no `last_seen_at`.
+
+### 3.6 Re-practice from History
+
+- On the history screen the user checks any sentences, from one or several sessions, and starts “再次练习” (Practice Again).
+- The checked sentences are practiced in history order (newest session first, then by position), each in **the mode it had in that session**; cloze blanks follow §3.2 as usual.
+- It runs in a sheet over the history screen with the same sentence, answer and result display as the practice screen. The header shows “临时练习” (Re-practice) and the position instead of the library progress; the sheet can be closed at any time. At the end it shows the number passed, with “完成” (Done) and “再练一遍” (Again: the same sentences once more).
+- Answers are scored as in §3.4, but **nothing is written**: no `practice_event`, no `progress` or `last_seen_at` change, no `session` or `session_item`. So mastery, sentence selection and the history are unaffected.
+- The `active` session is untouched; a recording in progress on the practice screen is stopped (and discarded, §3.4) when the re-practice starts.
 
 ---
 
@@ -511,7 +519,7 @@ Interactive visual reference: the label set review page (an artifact made by Cla
 | 已掌握 Mastered | level 7 |
 
 - **While the bundled seeds are imported** (first launch or after an app update), the practice screen shows a short progress state.
-- **History screen**: the 10 most recent sessions, read-only, each with the titles of its libraries. Each sentence shows its regional tag (§3.3), its annotation, translation, mode and result (passed, mismatched words, skipped), from `practice_event`.
+- **History screen**: the 10 most recent sessions, read-only, each with the titles of its libraries. Each sentence shows its regional tag (§3.3), its annotation, translation, mode and result (passed, mismatched words, skipped), from `practice_event`, and a checkbox; each session has “全选” (Select All). A bar above the list shows the number checked, “清除选择” (Clear) and “再次练习” (Practice Again, §3.6).
 - **Settings screen**: the standard macOS Settings window (⌘,) with two tabs:
   - “通用” (General): native language (中文 / English) and voice selection (installed German voices, stored in UserDefaults, with a preview), and a speech rate slider (0.50×–1.00× of the system default rate in steps of 0.05, showing the current multiplier, default 0.85×, stored in UserDefaults; used for all reading aloud). There is no API key field in 0.2.
   - “词库” (Library): every library from `seed_import` with a checkbox (the libraries practiced), its title and level, “已掌握 X / N” and its library progress, and its id, version, counts and import time; “清空练习记录” (Clear Practice Records) and “重置数据库” (Reset Database) (§2.6).

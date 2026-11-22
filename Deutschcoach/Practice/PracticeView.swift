@@ -27,9 +27,12 @@ struct PracticeView: View {
     }
 }
 
-private struct PracticeContent: View {
+/// The practice display, shared by the practice screen and the re-practice sheet (§3.6).
+struct PracticeContent: View {
     let engine: PracticeEngine
     let language: String
+    /// Re-practice: closes the sheet.
+    var close: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -39,6 +42,8 @@ private struct PracticeContent: View {
                 centered { ProgressView() }
             case .noContent:
                 noContent
+            case .finished:
+                finished
             case .failed(let message):
                 centered {
                     Label(message, systemImage: "xmark.octagon").foregroundStyle(.red)
@@ -71,11 +76,44 @@ private struct PracticeContent: View {
         }
     }
 
+    // MARK: - Re-practice summary (§3.6)
+
+    private var finished: some View {
+        let results = engine.replayResults
+        return centered {
+            VStack(spacing: 14) {
+                Image(systemName: "checkmark.seal")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                Text("Correct: \(results.filter { $0 == .pass }.count) / \(results.count)")
+                    .font(.title3)
+                    .monospacedDigit()
+                HStack(spacing: 12) {
+                    Button("Again", systemImage: "arrow.counterclockwise") { engine.restartReplay() }
+                    Button("Done") { close?() }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.return, modifiers: [])
+                }
+                .controlSize(.large)
+            }
+        }
+    }
+
     // MARK: - Header
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if engine.status == .practicing, let library = engine.library {
+            if engine.isReplay {
+                HStack {
+                    Text("Re-practice")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Button("Close", systemImage: "xmark") { close?() }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .keyboardShortcut(.cancelAction)
+                }
+            } else if engine.status == .practicing, let library = engine.library {
                 libraryHeader(library)
             }
             sessionHeader

@@ -27,6 +27,8 @@ final class PracticeEngine {
         /// The checked libraries have no sentence to practice (§6).
         case noContent
         case practicing
+        /// Re-practice only: every sentence is answered (§3.6).
+        case finished
         /// Database or other errors that stop practice.
         case failed(String)
     }
@@ -60,6 +62,8 @@ final class PracticeEngine {
     private(set) var library: LibraryProgress?
     /// Called after a session is finished, e.g. to refresh the history.
     var onSessionFinished: (() -> Void)?
+    /// Re-practice only: the answers so far, one per sentence (§3.6).
+    private(set) var replayResults: [PracticeOutcome] = []
 
     private let store: PracticeStore
     private let recognizer: any SpeechRecognizer
@@ -71,6 +75,9 @@ final class PracticeEngine {
     private var sessionId: Int64?
     private var sessionDone = false
     private var transcription: Task<Transcript, any Error>?
+    /// The sentences of a temporary re-practice (§3.6); nil for normal practice.
+    private let replayItems: [PracticeItem]?
+    private var replayIndex = 0
 
     init(
         database: AppDatabase,
@@ -85,7 +92,30 @@ final class PracticeEngine {
         self.speaker = speaker
         self.seedIds = seedIds
         rng = AnyRandomSource(base: random)
+        replayItems = nil
     }
+
+    /// A temporary re-practice of history sentences (§3.6): answers are scored and shown but never
+    /// written, so mastery, selection and history stay as they are.
+    init(
+        replaying items: [PracticeItem],
+        database: AppDatabase,
+        recognizer: any SpeechRecognizer = AppleSpeechRecognizer(),
+        speaker: any SentenceSpeaker = Speaker()
+    ) {
+        store = PracticeStore(database: database)
+        self.recognizer = recognizer
+        self.speaker = speaker
+        seedIds = []
+        rng = AnyRandomSource(base: SystemRandomNumberGenerator())
+        replayItems = items.enumerated().map { offset, item in
+            var item = item
+            item.position = offset + 1
+            return item
+        }
+    }
+
+    var isReplay: Bool { replayItems != nil }
 
     var canRecord: Bool {
         status == .practicing && speechState == .ready && (step == .prompt || step == .recording)
@@ -107,6 +137,10 @@ final class PracticeEngine {
 
     /// Resumes the `active` session or builds a new one.
     private func launch() async {
+        if isReplay {
+            restartReplay()
+            return
+        }
         do {
             if let active = try await store.activeSession() {
                 try await enter(session: active)
@@ -136,6 +170,28 @@ final class PracticeEngine {
         sessionId = id
         sessionDone = false
         try await showNextSentence()
+    }
+
+    /// Re-practice: starts over with the first sentence (also the Again button).
+    func restartReplay() {
+        guard let replayItems else { return }
+        stopRecording()
+        speaker.stop()
+        replayIndex = 0
+        replayResults = []
+        sessionDone = false
+        guard !replayItems.isEmpty else {
+            status = .noContent
+            return
+        }
+        show(replayItems[0], progress: (0, replayItems.count))
+    }
+
+    /// §3.6: stops a recording in progress, e.g. when a re-practice starts; the attempt is
+    /// discarded (§3.4) and the sentence stays on screen.
+    func interrupt() {
+        stopRecording()
+        speaker.stop()
     }
 
     private func stopAll() {
@@ -193,13 +249,17 @@ final class PracticeEngine {
             try await startNewSession()
             return
         }
+        library = try await store.libraryProgress(seedId: next.sentence.seedId)
+        show(next, progress: try await store.progress(ofSession: sessionId))
+    }
+
+    private func show(_ next: PracticeItem, progress: (answered: Int, total: Int)) {
         item = next
         outcome = nil
         liveText = ""
         speechError = nil
         step = .prompt
-        progress = try await store.progress(ofSession: sessionId)
-        library = try await store.libraryProgress(seedId: next.sentence.seedId)
+        self.progress = progress
         status = .practicing
         // §3.3: only shadowing reads the sentence before the answer.
         if next.mode == .shadow { speak(next.sentence.de) }
@@ -209,6 +269,17 @@ final class PracticeEngine {
     func next() async {
         guard step == .result else { return }
         speaker.stop()
+        if let replayItems {
+            if sessionDone {
+                item = nil
+                outcome = nil
+                status = .finished
+            } else {
+                replayIndex += 1
+                show(replayItems[replayIndex], progress: (replayIndex, replayItems.count))
+            }
+            return
+        }
         do {
             if sessionDone {
                 try await startNewSession()
@@ -300,6 +371,14 @@ final class PracticeEngine {
         let result = AnswerMatcher.score(de: item.sentence.de, spoken: item.sentence.spoken, heard: heard, skipped: skipped,
                                         names: item.annotation.foreignNames)
         logger.info("Sentence #\(item.sentence.id) (\(item.mode.rawValue, privacy: .public)): \(result.outcome.rawValue, privacy: .public)")
+        if let replayItems {
+            // §3.6: scored and shown, never written.
+            replayResults.append(result.outcome)
+            sessionDone = replayIndex == replayItems.count - 1
+            progress = (replayIndex + 1, replayItems.count)
+            showResult(ScoredAnswer(heard: heard, result: result), for: item)
+            return
+        }
         let answer = AnswerRecord(
             outcome: result.outcome, reason: result.reason, heard: heard,
             engine: heard == nil ? nil : recognizer.engineName, mismatched: result.mismatched
@@ -309,13 +388,17 @@ final class PracticeEngine {
             if sessionDone { onSessionFinished?() }
             if let sessionId { progress = try await store.progress(ofSession: sessionId) }
             library = try await store.libraryProgress(seedId: item.sentence.seedId)
-            outcome = ScoredAnswer(heard: heard, result: result)
-            step = .result
-            // §3.3: after answering, the correct sentence is shown and read aloud.
-            speak(item.sentence.de)
+            showResult(ScoredAnswer(heard: heard, result: result), for: item)
         } catch {
             fail(error)
         }
+    }
+
+    private func showResult(_ answer: ScoredAnswer, for item: PracticeItem) {
+        outcome = answer
+        step = .result
+        // §3.3: after answering, the correct sentence is shown and read aloud.
+        speak(item.sentence.de)
     }
 
     // MARK: - Speech model

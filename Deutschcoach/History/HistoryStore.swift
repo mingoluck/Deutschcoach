@@ -3,6 +3,13 @@ import GRDB
 
 /// One answered sentence of a session in the history (DESIGN.md §6).
 nonisolated struct HistoryItem: Sendable, Equatable, Identifiable {
+    /// Identifies an item across sessions, e.g. for the re-practice selection (§3.6).
+    struct Key: Sendable, Hashable {
+        var sessionId: Int64
+        var position: Int
+    }
+
+    var sessionId: Int64
     var position: Int
     var mode: SentenceMode
     var sentence: Sentence
@@ -12,7 +19,7 @@ nonisolated struct HistoryItem: Sendable, Equatable, Identifiable {
     /// The scored answer; nil when the item has no event (e.g. an unanswered item).
     var outcome: ScoredAnswer?
 
-    var id: Int { position }
+    var id: Key { Key(sessionId: sessionId, position: position) }
 }
 
 nonisolated struct HistorySession: Sendable, Equatable, Identifiable {
@@ -49,6 +56,18 @@ nonisolated struct HistoryStore: Sendable {
         }
     }
 
+    /// §3.6: the items to re-practice, each in its history mode, with cloze blanks as in §3.2.
+    func practiceItems(_ items: [HistoryItem]) async throws -> [PracticeItem] {
+        try await database.writer.read { db in
+            try items.map { item in
+                PracticeItem(sessionId: item.sessionId, position: item.position, mode: item.mode,
+                             sentence: item.sentence, annotation: item.annotation,
+                             blanks: item.mode == .cloze ? try PracticeStore.clozeBlanks(sentenceId: item.sentence.id, db: db) : [],
+                             regional: item.regional)
+            }
+        }
+    }
+
     private static func item(_ item: SessionItem, db: Database) throws -> HistoryItem {
         guard let sentence = try Sentence.fetchOne(db, key: item.sentenceId) else {
             throw DatabaseError(message: "sentence \(item.sentenceId) is missing")
@@ -68,7 +87,7 @@ nonisolated struct HistoryStore: Sendable {
             result.outcome = event.outcome
             outcome = ScoredAnswer(heard: detail?.heard, result: result)
         }
-        return HistoryItem(position: item.position, mode: item.mode, sentence: sentence,
+        return HistoryItem(sessionId: item.sessionId, position: item.position, mode: item.mode, sentence: sentence,
                            annotation: annotation,
                            regional: try RegionalEntry.load(sentenceId: sentence.id, db: db), outcome: outcome)
     }

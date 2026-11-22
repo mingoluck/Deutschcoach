@@ -604,6 +604,65 @@ struct PracticeEngineTests {
         #expect(session?.seedIds == [Fixture.seedId, Fixture.otherSeedId])
     }
 
+    /// A snapshot of everything a re-practice must leave alone (§3.6).
+    private func userLayer(_ database: AppDatabase) async throws -> [String] {
+        try await database.writer.read { db in
+            try ["practice_event", "progress", "session", "session_item"].map { table in
+                try Row.fetchAll(db, sql: "SELECT * FROM \(table) ORDER BY 1, 2").description
+            }
+        }
+    }
+
+    @Test func rePracticeFromHistoryWritesNothing() async throws {
+        let database = try await seededDatabase()
+        let clozeId = try await sentenceId("a1.dbg_abfahren.1", in: database)
+        try await database.writer.write { db in
+            try Progress(sentenceId: clozeId, level: 3, lastSeenAt: 0).insert(db)
+        }
+        let engine = makeEngine(database)
+        await engine.start(prepareSpeech: false)
+        for _ in 1...10 {
+            try await answer(engine)
+            await engine.next()
+        }
+        // An answered item of the active session, so it is not empty either.
+        try await answer(engine)
+        let before = try await userLayer(database)
+
+        let history = HistoryModel(database: database, speaker: SilentSpeaker(), makeRecognizer: { SilentRecognizer() })
+        var interrupted = false
+        history.onReplayStart = { interrupted = true }
+        await history.reload()
+        let session = try #require(history.sessions.first)
+        let cloze = try #require(session.items.first { $0.mode == .cloze })
+        let shadow = try #require(session.items.first { $0.mode == .shadow })
+        // Checked out of order; practiced in history order.
+        history.selection = [shadow.id, cloze.id, HistoryItem.Key(sessionId: 999, position: 1)]
+        await history.startReplay(prepareSpeech: false)
+        #expect(interrupted)
+
+        let replay = try #require(history.replay)
+        #expect(replay.isReplay && replay.status == .practicing && replay.library == nil)
+        let expected = [cloze, shadow].sorted { $0.position < $1.position }
+        for (offset, item) in expected.enumerated() {
+            let current = try #require(replay.item)
+            #expect(current.sentence.id == item.sentence.id && current.mode == item.mode)
+            #expect(current.position == offset + 1 && replay.progress == (offset, 2))
+            if current.mode == .cloze { #expect(current.blanks == [1, 4, 5]) }
+            try await answer(replay, correct: offset == 0)
+            await replay.next()
+        }
+        #expect(replay.status == .finished && replay.item == nil)
+        #expect(replay.replayResults == [.pass, .fail])
+
+        replay.restartReplay()
+        #expect(replay.status == .practicing && replay.replayResults.isEmpty && replay.item?.position == 1)
+        history.endReplay()
+        #expect(history.replay == nil)
+
+        #expect(try await userLayer(database) == before)
+    }
+
     @Test func dataResetRestartsPractice() async throws {
         let database = try await seededDatabase()
         let engine = makeEngine(database)
