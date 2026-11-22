@@ -31,6 +31,7 @@ private struct GeneralSettingsView: View {
     let model: AppModel
 
     @State private var voiceId: String = Speaker.selectedVoiceIdentifier ?? ""
+    @State private var rate: Double = Speaker.rateMultiplier
     private let voices = Speaker.germanVoices()
 
     var body: some View {
@@ -58,6 +59,15 @@ private struct GeneralSettingsView: View {
                 }
                 .onChange(of: voiceId) { _, id in
                     Speaker.selectedVoiceIdentifier = id.isEmpty ? nil : id
+                }
+                LabeledContent("Speech rate") {
+                    HStack {
+                        Slider(value: $rate, in: Speaker.rateRange, step: 0.05)
+                            .onChange(of: rate) { _, value in Speaker.rateMultiplier = value }
+                        Text(verbatim: String(format: "%.2f×", rate))
+                            .monospacedDigit()
+                            .frame(width: 44, alignment: .trailing)
+                    }
                 }
                 Button("Preview", systemImage: "speaker.wave.2.fill") {
                     let speaker = model.speaker

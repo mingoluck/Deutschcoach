@@ -31,6 +31,23 @@ final class Speaker: NSObject {
         set { UserDefaults.standard.set(newValue, forKey: voiceDefaultsKey) }
     }
 
+    // MARK: - Speech rate setting
+
+    static let rateDefaultsKey = "speechRate"
+    /// Allowed multipliers of the system's default speech rate.
+    static let rateRange: ClosedRange<Double> = 0.5...1.0
+    static let defaultRateMultiplier = 0.85
+
+    /// Multiplier of `AVSpeechUtteranceDefaultSpeechRate`, clamped to `rateRange`.
+    static var rateMultiplier: Double {
+        get {
+            guard UserDefaults.standard.object(forKey: rateDefaultsKey) != nil else { return defaultRateMultiplier }
+            let value = UserDefaults.standard.double(forKey: rateDefaultsKey)
+            return min(max(value, rateRange.lowerBound), rateRange.upperBound)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: rateDefaultsKey) }
+    }
+
     /// Installed German voices, best quality first.
     static func germanVoices() -> [AVSpeechSynthesisVoice] {
         AVSpeechSynthesisVoice.speechVoices()
@@ -58,6 +75,7 @@ final class Speaker: NSObject {
         stop()
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * Float(Self.rateMultiplier)
         await withCheckedContinuation { continuation in
             self.continuation = continuation
             current = ObjectIdentifier(utterance)

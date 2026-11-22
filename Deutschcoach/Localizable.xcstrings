@@ -919,6 +919,16 @@
         }
       }
     },
+    "Speech rate" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语速"
+          }
+        }
+      }
+    },
     "Status" : {
       "extractionState" : "stale",
       "localizations" : {
