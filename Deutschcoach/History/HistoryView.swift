@@ -67,6 +67,8 @@ struct HistoryView: View {
                 .foregroundStyle(.secondary)
             Button("Clear") { history.selection.removeAll() }
                 .disabled(count == 0)
+            Button("Select Mistakes", systemImage: "xmark.circle") { history.selectMistakes() }
+                .disabled(history.mistakes.isEmpty)
             Spacer()
             Button("Practice Again", systemImage: "arrow.counterclockwise") {
                 Task { await history.startReplay() }

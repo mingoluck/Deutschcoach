@@ -905,6 +905,16 @@
         }
       }
     },
+    "Select Mistakes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择所有错题"
+          }
+        }
+      }
+    },
     "Sentences" : {
       "extractionState" : "stale",
       "localizations" : {

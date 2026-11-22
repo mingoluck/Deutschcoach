@@ -663,6 +663,24 @@ struct PracticeEngineTests {
         #expect(try await userLayer(database) == before)
     }
 
+    @Test func selectMistakesAddsFailedItemsOnly() async throws {
+        let database = try await seededDatabase()
+        let engine = makeEngine(database)
+        await engine.start(prepareSpeech: false)
+        for position in 1...10 {
+            // 2 and 5 fail, 3 is skipped.
+            try await answer(engine, correct: position != 2 && position != 5, skip: position == 3)
+            await engine.next()
+        }
+        let history = HistoryModel(database: database, speaker: SilentSpeaker(), makeRecognizer: { SilentRecognizer() })
+        await history.reload()
+        let session = try #require(history.sessions.first)
+        let checked = HistoryItem.Key(sessionId: session.id, position: 1)
+        history.selection = [checked]
+        history.selectMistakes()
+        #expect(history.selection == [checked, .init(sessionId: session.id, position: 2), .init(sessionId: session.id, position: 5)])
+    }
+
     @Test func dataResetRestartsPractice() async throws {
         let database = try await seededDatabase()
         let engine = makeEngine(database)

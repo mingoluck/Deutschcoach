@@ -40,6 +40,16 @@ final class HistoryModel {
         sessions.flatMap(\.items).filter { selection.contains($0.id) }
     }
 
+    /// Items answered with mistakes (`fail`); skipped or unheard items do not count (§6).
+    var mistakes: [HistoryItem] {
+        sessions.flatMap(\.items).filter { $0.outcome?.result.outcome == .fail }
+    }
+
+    /// Adds every mistake to the selection; items already checked stay checked.
+    func selectMistakes() {
+        selection.formUnion(mistakes.map(\.id))
+    }
+
     /// §3.6: starts a temporary re-practice of the checked items.
     func startReplay(prepareSpeech: Bool = true) async {
         let items = selectedItems
