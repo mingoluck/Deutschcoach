@@ -17,15 +17,6 @@ struct DeutschcoachApp: App {
                         Text("No sessions yet.").foregroundStyle(.secondary)
                     }
                 }
-                #if DEBUG
-                // Milestone lab screens, Debug builds only (DESIGN.md §6).
-                Tab("Speech", systemImage: "waveform") {
-                    SpeechLabView()
-                }
-                Tab("Database", systemImage: "cylinder") {
-                    ContentView(model: model)
-                }
-                #endif
             }
             .frame(minWidth: 640, minHeight: 480)
             .environment(\.locale, NativeLanguage.locale(for: model.nativeLanguage))

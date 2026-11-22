@@ -148,15 +148,4 @@ final class AppModel {
         await history?.reload()
         await practice?.dataWasReset()
     }
-
-    #if DEBUG
-    /// Debug builds: imports the small debug seed so practice can be tried without real content.
-    func loadDebugSeed() async throws {
-        guard let database else { return }
-        let file = try SeedImporter.decode(DebugSeed.data)
-        try await SeedImporter.importSeed(file, origin: .user, into: database)
-        try await refreshLibrary()
-        await practice?.libraryChanged()
-    }
-    #endif
 }

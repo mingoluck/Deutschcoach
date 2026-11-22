@@ -1,8 +1,7 @@
 #if DEBUG
 import Foundation
 
-/// A small A1 seed for trying practice before the real word lists are bundled, and the fixture
-/// of the unit tests. Debug builds only; loaded from the Database lab tab. Its keys carry a
+/// A small A1 seed used as the fixture of the unit tests. Debug builds only. Its keys carry a
 /// `dbg_` prefix so they never clash with the keys of the Goethe seeds.
 nonisolated enum DebugSeed {
     static let id = "debug_a1"

@@ -516,7 +516,7 @@ Interactive visual reference: the label set review page (an artifact made by Cla
   - “通用” (General): native language (中文 / English) and voice selection (installed German voices, stored in UserDefaults, with a preview), and a speech rate slider (0.50×–1.00× of the system default rate in steps of 0.05, showing the current multiplier, default 0.85×, stored in UserDefaults; used for all reading aloud). There is no API key field in 0.2.
   - “词库” (Library): every library from `seed_import` with a checkbox (the libraries practiced), its title and level, “已掌握 X / N” and its library progress, and its id, version, counts and import time; “清空练习记录” (Clear Practice Records) and “重置数据库” (Reset Database) (§2.6).
 - **When the checked libraries have no sentence**, the practice screen says so (“所选词库还没有句子。”) and points to Settings › Library.
-- The main window has two tabs: practice and history. Of the milestone lab screens, only speech and database remain, in Debug builds only. The database lab has a “Load debug seed” button: a 12-sentence A1 seed compiled into Debug builds only (`DebugSeed`, keys `a1.dbg_*` so they never clash with the Goethe seeds), which is also the unit-test fixture.
+- The main window has two tabs: practice and history, the same in Debug and Release builds; the milestone lab screens are gone. A 12-sentence A1 seed compiled into Debug builds only (`DebugSeed`, keys `a1.dbg_*` so they never clash with the Goethe seeds) serves as the unit-test fixture.
 
 ---
 
